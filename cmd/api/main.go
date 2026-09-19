@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tecisage/resell-apis/internal/config"
+	"github.com/tecisage/resell-apis/internal/db"
 	"github.com/tecisage/resell-apis/internal/handlers"
 )
 
@@ -13,6 +14,13 @@ func main() {
 
 	// load config
 	cfg := config.MustLoad()
+
+	// DB connect
+	db, err := db.Connect(cfg.DB_URL)
+	if err != nil {
+		log.Fatalf("main.db.Connect: %v", err)
+	}
+	defer db.Close()
 
 	// create mux
 	mux := http.NewServeMux()
@@ -33,6 +41,6 @@ func main() {
 
 	// start server
 	if err := srv.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		log.Fatalf("main.srv.ListenAndServe: %v", err)
 	}
 }
