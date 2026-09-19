@@ -4,20 +4,29 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/tecisage/resell-apis/internal/config"
 )
 
 func main() {
 
+	// load config
+	cfg := config.MustLoad()
+
+	// create mux
 	mux := http.NewServeMux()
 
+	// health check
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status": "All OK"}`))
 	})
 
+	// create http server
+	log.Println("Starting server on :" + cfg.Port)
 	srv := http.Server{
-		Addr:              ":8090",
+		Addr:              ":" + cfg.Port,
 		Handler:           mux,
 		ReadTimeout:       10 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -25,6 +34,7 @@ func main() {
 		IdleTimeout:       60 * time.Second,
 	}
 
+	// start server
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
