@@ -28,7 +28,10 @@ func main() {
 	// health check
 	mux.HandleFunc("GET /healthz", handlers.Healthz)
 
-	mux.HandleFunc("GET /listings", handlers.Listings(db))
+	// listing routes
+	listingHandler := handlers.NewListingHandler(db)
+	mux.HandleFunc("GET /listings", listingHandler.GetListings)
+	mux.HandleFunc("DELETE /listings/{id}", listingHandler.DeleteListing)
 
 	// create http server
 	log.Println("Starting server on :" + cfg.Port)
