@@ -14,3 +14,6 @@ migrate-up:
 
 migrate-down:
 	@go run ./cmd/migrate down
+
+migrate-reset:
+	@go run ./cmd/migrate reset

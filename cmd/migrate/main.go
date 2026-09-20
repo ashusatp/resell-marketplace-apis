@@ -31,6 +31,11 @@ func main() {
 		}
 		fmt.Println("database migration success")
 	case "down":
+		if err := m.Steps(-1); err != nil && err != migrate.ErrNoChange {
+			log.Fatal(err)
+		}
+		fmt.Println("database rollback success")
+	case "reset":
 		if err := m.Down(); err != nil && err != migrate.ErrNoChange {
 			log.Fatal(err)
 		}
