@@ -30,6 +30,10 @@ func NewListingHandler(db *sql.DB) *ListingHandler {
 }
 
 func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
+
+	// request scoped context
+	ctx := r.Context()
+
 	query := `
 		SELECT id, title, description, price, city, image, created_at, updated_at
 		FROM listings
@@ -37,8 +41,8 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 		LIMIT 100;
 	`
 
-	// 1. Use QueryContext with r.Context()
-	rows, err := lh.DB.QueryContext(r.Context(), query)
+	// 1. Use QueryContext with r.Context() to handle zombie query and connection
+	rows, err := lh.DB.QueryContext(ctx, query)
 	if err != nil {
 		log.Printf("GetListings query error: %v\n", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -81,6 +85,10 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) {
+
+	// request scoped context
+	ctx := r.Context()
+
 	id := r.PathValue("id")
 	if id == "" {
 		log.Printf("DeleteListing: missing id\n")
@@ -95,8 +103,8 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// 4. Use ExecContext with r.Context()
-	result, err := lh.DB.ExecContext(r.Context(), `DELETE FROM listings WHERE id = $1`, id)
+	// 4. Use ExecContext with r.Context() to handle zombie query and connection
+	result, err := lh.DB.ExecContext(ctx, `DELETE FROM listings WHERE id = $1`, id)
 	if err != nil {
 		log.Printf("DeleteListing exec error: %v\n", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
