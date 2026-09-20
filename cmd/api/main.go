@@ -28,6 +28,8 @@ func main() {
 	// health check
 	mux.HandleFunc("GET /healthz", handlers.Healthz)
 
+	mux.HandleFunc("GET /listings", handlers.Listings(db))
+
 	// create http server
 	log.Println("Starting server on :" + cfg.Port)
 	srv := http.Server{
