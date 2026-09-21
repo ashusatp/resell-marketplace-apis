@@ -3,11 +3,12 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/google/uuid"
+	middleware "github.com/tecisage/resell-apis/internal/middlewares"
 )
 
 type Listing struct {
@@ -22,17 +23,23 @@ type Listing struct {
 }
 
 type ListingHandler struct {
-	DB *sql.DB
+	DB     *sql.DB
+	Logger *slog.Logger
 }
 
-func NewListingHandler(db *sql.DB) *ListingHandler {
-	return &ListingHandler{DB: db}
+func NewListingHandler(db *sql.DB, logger *slog.Logger) *ListingHandler {
+	return &ListingHandler{
+		DB:     db,
+		Logger: logger,
+	}
 }
 
 func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 
 	// request scoped context
 	ctx := r.Context()
+	// get request id from context
+	reqId := middleware.GetRequestID(ctx)
 
 	query := `
 		SELECT id, title, description, price, city, image, created_at, updated_at
@@ -44,7 +51,7 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 	// 1. Use QueryContext with r.Context() to handle zombie query and connection
 	rows, err := lh.DB.QueryContext(ctx, query)
 	if err != nil {
-		log.Printf("GetListings query error: %v\n", err)
+		lh.Logger.Error("GetListings query error", "request_id", reqId, "err", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -64,7 +71,7 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 			&l.CreatedAt,
 			&l.UpdatedAt,
 		); err != nil {
-			log.Printf("GetListings scan error: %v\n", err)
+			lh.Logger.Error("GetListings scan error", "request_id", reqId, "err", err)
 			http.Error(w, "internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -72,7 +79,7 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := rows.Err(); err != nil {
-		log.Printf("GetListings rows error: %v\n", err)
+		lh.Logger.Error("GetListings rows error", "request_id", reqId, "err", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -80,7 +87,7 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(lis); err != nil {
-		log.Printf("GetListings encode error: %v\n", err)
+		lh.Logger.Error("GetListings encode error", "request_id", reqId, "err", err)
 	}
 }
 
@@ -88,17 +95,19 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 
 	// request scoped context
 	ctx := r.Context()
+	// get request id from context
+	reqId := middleware.GetRequestID(ctx)
 
 	id := r.PathValue("id")
 	if id == "" {
-		log.Printf("DeleteListing: missing id\n")
+		lh.Logger.Error("DeleteListing: missing id", "request_id", reqId)
 		http.Error(w, "missing id", http.StatusBadRequest)
 		return
 	}
 
 	// 3. Validate UUID format
 	if _, err := uuid.Parse(id); err != nil {
-		log.Printf("DeleteListing: invalid uuid %q: %v\n", id, err)
+		lh.Logger.Error("DeleteListing: invalid uuid", "id", id, "request_id", reqId, "err", err)
 		http.Error(w, "invalid id format", http.StatusBadRequest)
 		return
 	}
@@ -106,20 +115,19 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 	// 4. Use ExecContext with r.Context() to handle zombie query and connection
 	result, err := lh.DB.ExecContext(ctx, `DELETE FROM listings WHERE id = $1`, id)
 	if err != nil {
-		log.Printf("DeleteListing exec error: %v\n", err)
+		lh.Logger.Error("DeleteListing exec error", "listing_id", id, "request_id", reqId, "err", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		log.Printf("DeleteListing rowsAffected error: %v\n", err)
+		lh.Logger.Error("DeleteListing rowsAffected error", "listing_id", id, "request_id", reqId, "err", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if rowsAffected == 0 {
-		log.Printf("DeleteListing: listing not found: %s\n", id)
 		http.Error(w, "listing not found", http.StatusNotFound)
 		return
 	}

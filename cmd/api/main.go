@@ -2,12 +2,15 @@ package main
 
 import (
 	"log"
+	"log/slog"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/tecisage/resell-apis/internal/config"
 	"github.com/tecisage/resell-apis/internal/db"
 	"github.com/tecisage/resell-apis/internal/handlers"
+	middleware "github.com/tecisage/resell-apis/internal/middlewares"
 )
 
 func main() {
@@ -22,6 +25,14 @@ func main() {
 	}
 	defer db.Close()
 
+	// logging
+	loggerHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource: true,
+		Level:     slog.LevelInfo,
+	})
+	logger := slog.New(loggerHandler)
+	slog.SetDefault(logger)
+
 	// create mux
 	mux := http.NewServeMux()
 
@@ -29,15 +40,18 @@ func main() {
 	mux.HandleFunc("GET /healthz", handlers.Healthz)
 
 	// listing routes
-	listingHandler := handlers.NewListingHandler(db)
+	listingHandler := handlers.NewListingHandler(db, logger)
 	mux.HandleFunc("GET /listings", listingHandler.GetListings)
 	mux.HandleFunc("DELETE /listings/{id}", listingHandler.DeleteListing)
+
+	// request id middleware
+	rootHandler := middleware.RequestIDMiddleware(mux)
 
 	// create http server
 	log.Println("Starting server on :" + cfg.Port)
 	srv := http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           mux,
+		Handler:           rootHandler,
 		ReadTimeout:       10 * time.Second,
 		ReadHeaderTimeout: 10 * time.Second,
 		WriteTimeout:      30 * time.Second,
