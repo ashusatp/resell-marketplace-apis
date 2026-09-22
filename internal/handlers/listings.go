@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tecisage/resell-apis/internal/httpx"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
 )
 
@@ -52,7 +53,7 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 	rows, err := lh.DB.QueryContext(ctx, query)
 	if err != nil {
 		lh.Logger.Error("GetListings query error", "request_id", reqId, "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 		return
 	}
 	defer rows.Close()
@@ -72,7 +73,7 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 			&l.UpdatedAt,
 		); err != nil {
 			lh.Logger.Error("GetListings scan error", "request_id", reqId, "err", err)
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 			return
 		}
 		lis = append(lis, l)
@@ -80,7 +81,7 @@ func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
 
 	if err := rows.Err(); err != nil {
 		lh.Logger.Error("GetListings rows error", "request_id", reqId, "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 		return
 	}
 
@@ -101,14 +102,14 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 	id := r.PathValue("id")
 	if id == "" {
 		lh.Logger.Error("DeleteListing: missing id", "request_id", reqId)
-		http.Error(w, "missing id", http.StatusBadRequest)
+		httpx.Error(w, http.StatusBadRequest, "missing id", httpx.CodeBadRequest)
 		return
 	}
 
 	// 3. Validate UUID format
 	if _, err := uuid.Parse(id); err != nil {
 		lh.Logger.Error("DeleteListing: invalid uuid", "id", id, "request_id", reqId, "err", err)
-		http.Error(w, "invalid id format", http.StatusBadRequest)
+		httpx.Error(w, http.StatusBadRequest, "invalid id format", httpx.CodeInvalidID)
 		return
 	}
 
@@ -116,19 +117,19 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 	result, err := lh.DB.ExecContext(ctx, `DELETE FROM listings WHERE id = $1`, id)
 	if err != nil {
 		lh.Logger.Error("DeleteListing exec error", "listing_id", id, "request_id", reqId, "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 		return
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		lh.Logger.Error("DeleteListing rowsAffected error", "listing_id", id, "request_id", reqId, "err", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 		return
 	}
 
 	if rowsAffected == 0 {
-		http.Error(w, "listing not found", http.StatusNotFound)
+		httpx.Error(w, http.StatusNotFound, "listing not found", httpx.CodeNotFound)
 		return
 	}
 
