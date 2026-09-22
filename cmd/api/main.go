@@ -43,6 +43,7 @@ func main() {
 	listingHandler := handlers.NewListingHandler(db, logger)
 	mux.HandleFunc("GET /listings", listingHandler.GetListings)
 	mux.HandleFunc("DELETE /listings/{id}", listingHandler.DeleteListing)
+	mux.HandleFunc("POST /listings", listingHandler.CreateListing)
 
 	// request id middleware
 	rootHandler := middleware.RequestIDMiddleware(mux)

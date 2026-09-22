@@ -135,3 +135,46 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+type createListingRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Price       int64  `json:"price"`
+	City        string `json:"city"`
+}
+
+func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+	reqId := middleware.GetRequestID(ctx)
+
+	var req createListingRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		lh.Logger.Error("CreateListing decode error", "request_id", reqId, "err", err)
+		httpx.Error(w, http.StatusBadRequest, "invalid request body", httpx.CodeBadRequest)
+		return
+	}
+
+	query := `
+		INSERT INTO listings (title, description, price, city)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id;
+	`
+
+	var id string
+	err := lh.DB.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City).
+		Scan(&id)
+	if err != nil {
+		lh.Logger.Error("CreateListing query error", "request_id", reqId, "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
+		return
+	}
+
+	lh.Logger.Info("Listing created successfully", "id", id, "request_id", reqId)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(map[string]string{"id": id, "message": "Listing created successfully"})
+
+}
