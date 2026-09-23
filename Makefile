@@ -17,3 +17,6 @@ migrate-down:
 
 migrate-reset:
 	@go run ./cmd/migrate reset
+
+migrate-create:
+	@migrate create -ext sql -dir migrations -seq $(name)
