@@ -11,7 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/tecisage/resell-apis/internal/httpx"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
-	"github.com/tecisage/resell-apis/internal/token"
+	"github.com/tecisage/resell-apis/internal/tokens"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -149,7 +149,7 @@ func (ah *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Generate JWT
-	tokenString, err := token.Generate(id, req.Email, ah.JWTSecret, 24*time.Hour)
+	tokenString, err := tokens.Generate(id, req.Email, ah.JWTSecret, 24*time.Hour)
 	if err != nil {
 		ah.Logger.Error("Login token generation error", "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
