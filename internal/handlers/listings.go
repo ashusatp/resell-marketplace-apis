@@ -114,8 +114,15 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	claims, claimErr := middleware.GetAuthClaims(ctx)
+	if claimErr != nil {
+		lh.Logger.Error("DeleteListing: failed to get claims", "request_id", reqId, "err", claimErr)
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", httpx.CodeUnauthorized)
+		return
+	}
+
 	// 4. Use ExecContext with r.Context() to handle zombie query and connection
-	result, err := lh.DB.ExecContext(ctx, `DELETE FROM listings WHERE id = $1`, id)
+	result, err := lh.DB.ExecContext(ctx, `DELETE FROM listings WHERE id = $1 AND created_by = $2`, id, claims.UserID)
 	if err != nil {
 		lh.Logger.Error("DeleteListing exec error", "listing_id", id, "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
@@ -130,7 +137,7 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if rowsAffected == 0 {
-		httpx.Error(w, http.StatusNotFound, "listing not found", httpx.CodeNotFound)
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", httpx.CodeUnauthorized)
 		return
 	}
 
@@ -141,6 +148,13 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 
 	ctx := r.Context()
 	reqId := middleware.GetRequestID(ctx)
+
+	claims, claimErr := middleware.GetAuthClaims(ctx)
+	if claimErr != nil {
+		lh.Logger.Error("CreateListing: failed to get claims", "request_id", reqId, "err", claimErr)
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized", httpx.CodeUnauthorized)
+		return
+	}
 
 	var req CreateListingRequest
 
@@ -159,13 +173,13 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 	}
 
 	query := `
-		INSERT INTO listings (title, description, price, city)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO listings (title, description, price, city, created_by)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, title, created_at;
 	`
 
 	var out CreateListingResponse
-	err := lh.DB.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City).
+	err := lh.DB.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City, claims.UserID).
 		Scan(&out.ID, &out.Title, &out.Created)
 	if err != nil {
 		lh.Logger.Error("CreateListing query error", "request_id", reqId, "err", err)

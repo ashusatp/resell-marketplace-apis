@@ -39,17 +39,20 @@ func main() {
 	// health check
 	mux.HandleFunc("GET /healthz", handlers.Healthz)
 
-	// listing routes
-	listingHandler := handlers.NewListingHandler(db, logger)
-	mux.HandleFunc("GET /listings", listingHandler.GetListings)
-	mux.HandleFunc("DELETE /listings/{id}", listingHandler.DeleteListing)
-	mux.HandleFunc("POST /listings", listingHandler.CreateListing)
-
 	// auth routes
 	authHandler := handlers.NewAuthHandler(db, logger, cfg.JWTSecret)
 	mux.HandleFunc("POST /auth/signup", authHandler.Signup)
 	mux.HandleFunc("POST /auth/login", authHandler.Login)
 	mux.HandleFunc("POST /auth/logout", authHandler.Logout)
+
+	// 2. Protect routes (e.g. creating/deleting listings)
+	requireAuth := middleware.AuthMiddleware(cfg.JWTSecret)
+
+	// listing routes
+	listingHandler := handlers.NewListingHandler(db, logger)
+	mux.HandleFunc("GET /listings", listingHandler.GetListings)
+	mux.Handle("DELETE /listings/{id}", requireAuth(http.HandlerFunc(listingHandler.DeleteListing)))
+	mux.Handle("POST /listings", requireAuth(http.HandlerFunc(listingHandler.CreateListing)))
 
 	// request id middleware
 	rootHandler := middleware.RequestIDMiddleware(mux)

@@ -20,3 +20,6 @@ migrate-reset:
 
 migrate-create:
 	@migrate create -ext sql -dir migrations -seq $(name)
+
+migrate-force:
+	@go run ./cmd/migrate force $(version)

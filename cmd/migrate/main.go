@@ -40,6 +40,18 @@ func main() {
 			log.Fatal(err)
 		}
 		fmt.Println("database rollback success")
+	case "force":
+		if len(os.Args) < 3 {
+			log.Fatal("usage: go run ./cmd/migrate force <version>")
+		}
+		var version int
+		if _, err := fmt.Sscanf(os.Args[2], "%d", &version); err != nil {
+			log.Fatalf("invalid version: %v", err)
+		}
+		if err := m.Force(version); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("database version forced to %d\n", version)
 	default:
 		log.Fatalf("Invalid argument: %s", os.Args[1])
 	}
