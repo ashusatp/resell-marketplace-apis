@@ -6,22 +6,26 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/tecisage/resell-apis/internal/httpx"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
+	"github.com/tecisage/resell-apis/internal/token"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
-	DB     *sql.DB
-	Logger *slog.Logger
+	DB        *sql.DB
+	Logger    *slog.Logger
+	JWTSecret string
 }
 
-func NewAuthHandler(db *sql.DB, logger *slog.Logger) *AuthHandler {
+func NewAuthHandler(db *sql.DB, logger *slog.Logger, jwtSecret string) *AuthHandler {
 	return &AuthHandler{
-		DB:     db,
-		Logger: logger,
+		DB:        db,
+		Logger:    logger,
+		JWTSecret: jwtSecret,
 	}
 }
 
@@ -144,9 +148,17 @@ func (ah *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Generate JWT
+	tokenString, err := token.Generate(id, req.Email, ah.JWTSecret, 24*time.Hour)
+	if err != nil {
+		ah.Logger.Error("Login token generation error", "request_id", reqId, "err", err)
+		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(LoginResponse{Token: id})
+	json.NewEncoder(w).Encode(LoginResponse{Token: tokenString})
 }
 
 func (ah *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {

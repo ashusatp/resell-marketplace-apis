@@ -7,9 +7,10 @@ import (
 )
 
 type Config struct {
-	Port   string
-	Env    string
-	DB_URL string
+	Port      string
+	Env       string
+	DB_URL    string
+	JWTSecret string
 }
 
 func MustLoad() Config {
@@ -30,9 +31,15 @@ func MustLoad() Config {
 		panic("DB_URL is not set")
 	}
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		panic("JWT_SECRET is not set")
+	}
+
 	return Config{
-		Port:   port,
-		Env:    env,
-		DB_URL: db_url,
+		Port:      port,
+		Env:       env,
+		DB_URL:    db_url,
+		JWTSecret: jwtSecret,
 	}
 }
