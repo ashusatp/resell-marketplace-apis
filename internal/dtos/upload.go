@@ -29,10 +29,15 @@ type PresignReq struct {
 
 type PresignFile struct {
 	ContentType string `json:"content_type"`
-	SizeByte    int64  `json:"size_byte"`
+	SizeBytes   int64  `json:"size_bytes"`
 }
 
-func (r *PresignReq) ValidateAndGetUploadKeys(userUUID string) ([]string, error) {
+type FileKeyAndSize struct {
+	Key       string
+	SizeBytes int64
+}
+
+func (r *PresignReq) ValidateAndGetUploadKeys(userUUID string) ([]FileKeyAndSize, error) {
 	if len(r.Files) == 0 {
 		return nil, &ValidationError{Field: "files", Message: "files is required"}
 	}
@@ -44,7 +49,7 @@ func (r *PresignReq) ValidateAndGetUploadKeys(userUUID string) ([]string, error)
 		}
 	}
 
-	keys := make([]string, len(r.Files))
+	keys := make([]FileKeyAndSize, len(r.Files))
 
 	for i, file := range r.Files {
 		fileType := strings.ToLower(strings.TrimSpace(file.ContentType))
@@ -62,21 +67,24 @@ func (r *PresignReq) ValidateAndGetUploadKeys(userUUID string) ([]string, error)
 			}
 		}
 
-		if file.SizeByte <= 0 {
+		if file.SizeBytes <= 0 {
 			return nil, &ValidationError{
 				Field:   fmt.Sprintf("files[%d].size_byte", i),
 				Message: "size_byte must be greater than 0",
 			}
 		}
 
-		if file.SizeByte > MaxFileSize {
+		if file.SizeBytes > MaxFileSize {
 			return nil, &ValidationError{
 				Field:   fmt.Sprintf("files[%d].size_byte", i),
 				Message: fmt.Sprintf("file size exceeds maximum allowed size (%d MB)", MaxFileSize/(1024*1024)),
 			}
 		}
 
-		keys[i] = mintUploadKey(userUUID, file.ContentType)
+		keys[i] = FileKeyAndSize{
+			Key:       mintUploadKey(userUUID, file.ContentType),
+			SizeBytes: file.SizeBytes,
+		}
 
 	}
 
