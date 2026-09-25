@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tecisage/resell-apis/internal/dtos"
 	"github.com/tecisage/resell-apis/internal/httpx"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
 )
@@ -156,7 +157,7 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var req CreateListingRequest
+	var req dtos.CreateListingRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		lh.Logger.Error("CreateListing decode error", "request_id", reqId, "err", err)
@@ -165,7 +166,7 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := req.Validate(); err != nil {
-		var vError *ValidationError
+		var vError *dtos.ValidationError
 		errors.As(err, &vError)
 		lh.Logger.Error("CreateListing validate error", "request_id", reqId, "err", err)
 		httpx.ValidationError(w, http.StatusUnprocessableEntity, err.Error(), httpx.CodeValidationFailed, vError.Field)
@@ -178,7 +179,7 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 		RETURNING id, title, created_at;
 	`
 
-	var out CreateListingResponse
+	var out dtos.CreateListingResponse
 	err := lh.DB.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City, claims.UserID).
 		Scan(&out.ID, &out.Title, &out.Created)
 	if err != nil {

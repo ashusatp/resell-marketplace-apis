@@ -7,10 +7,14 @@ import (
 )
 
 type Config struct {
-	Port      string
-	Env       string
-	DB_URL    string
-	JWTSecret string
+	Port             string
+	Env              string
+	DB_URL           string
+	JWTSecret        string
+	R2_ACCOUNT_ID    string
+	R2_ACCESS_KEY    string
+	R2_ACCESS_SECRET string
+	R2_BUCKET        string
 }
 
 func MustLoad() Config {
@@ -36,10 +40,34 @@ func MustLoad() Config {
 		panic("JWT_SECRET is not set")
 	}
 
+	R2_ACCOUNT_ID := os.Getenv("R2_ACCOUNT_ID")
+	if R2_ACCOUNT_ID == "" {
+		panic("R2_ACCOUNT_ID is not set")
+	}
+
+	R2_ACCESS_KEY := os.Getenv("R2_ACCESS_KEY")
+	if R2_ACCESS_KEY == "" {
+		panic("R2_ACCESS_KEY is not set")
+	}
+
+	R2_ACCESS_SECRET := os.Getenv("R2_ACCESS_SECRET")
+	if R2_ACCESS_SECRET == "" {
+		panic("R2_ACCESS_SECRET is not set")
+	}
+
+	R2_BUCKET := os.Getenv("R2_BUCKET")
+	if R2_BUCKET == "" {
+		panic("R2_BUCKET is not set")
+	}
+
 	return Config{
-		Port:      port,
-		Env:       env,
-		DB_URL:    db_url,
-		JWTSecret: jwtSecret,
+		Port:             port,
+		Env:              env,
+		DB_URL:           db_url,
+		JWTSecret:        jwtSecret,
+		R2_ACCOUNT_ID:    R2_ACCOUNT_ID,
+		R2_ACCESS_KEY:    R2_ACCESS_KEY,
+		R2_ACCESS_SECRET: R2_ACCESS_SECRET,
+		R2_BUCKET:        R2_BUCKET,
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/tecisage/resell-apis/internal/dtos"
 	"github.com/tecisage/resell-apis/internal/httpx"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
 	"github.com/tecisage/resell-apis/internal/tokens"
@@ -44,7 +45,7 @@ func (ah *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 	// 1. Limit body size to prevent DoS
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-	var req SignUpRequest
+	var req dtos.SignUpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ah.Logger.Error("Signup decode error", "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusBadRequest, "invalid request body", httpx.CodeBadRequest)
@@ -53,7 +54,7 @@ func (ah *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Validate and normalize input
 	if err := req.Validate(); err != nil {
-		var vError *ValidationError
+		var vError *dtos.ValidationError
 		field := ""
 		msg := err.Error()
 		if errors.As(err, &vError) && vError != nil {
@@ -93,7 +94,7 @@ func (ah *AuthHandler) Signup(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(SignUpResponse{ID: u.ID, Name: req.Name, Email: req.Email, CreatedAt: u.CreatedAt}); err != nil {
+	if err := json.NewEncoder(w).Encode(dtos.SignUpResponse{ID: u.ID, Name: req.Name, Email: req.Email, CreatedAt: u.CreatedAt}); err != nil {
 		ah.Logger.Error("Signup encode error", "request_id", reqId, "err", err)
 	}
 }
@@ -105,7 +106,7 @@ func (ah *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 
-	var req LoginRequest
+	var req dtos.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		ah.Logger.Error("Login decode error", "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusBadRequest, "invalid request body", httpx.CodeBadRequest)
@@ -113,7 +114,7 @@ func (ah *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
-		var vError *ValidationError
+		var vError *dtos.ValidationError
 		field := ""
 		msg := err.Error()
 		if errors.As(err, &vError) && vError != nil {
@@ -158,7 +159,7 @@ func (ah *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(LoginResponse{Token: tokenString})
+	json.NewEncoder(w).Encode(dtos.LoginResponse{Token: tokenString})
 }
 
 func (ah *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {

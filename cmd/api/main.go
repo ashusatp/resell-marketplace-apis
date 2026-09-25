@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"log/slog"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"github.com/tecisage/resell-apis/internal/db"
 	"github.com/tecisage/resell-apis/internal/handlers"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
+	"github.com/tecisage/resell-apis/internal/storage"
 )
 
 func main() {
@@ -33,6 +35,17 @@ func main() {
 	logger := slog.New(loggerHandler)
 	slog.SetDefault(logger)
 
+	// Object Storage Initialisation
+	r2Client, err := storage.NewR2Client(context.TODO(), storage.R2Config{
+		AccountID:    cfg.R2_ACCOUNT_ID,
+		AccessKey:    cfg.R2_ACCESS_KEY,
+		AccessSecret: cfg.R2_ACCESS_SECRET,
+		Bucket:       cfg.R2_BUCKET,
+	})
+	if err != nil {
+		log.Fatalf("main.storage.NewR2Client: %v", err)
+	}
+
 	// create mux
 	mux := http.NewServeMux()
 
@@ -53,6 +66,10 @@ func main() {
 	mux.HandleFunc("GET /listings", listingHandler.GetListings)
 	mux.Handle("DELETE /listings/{id}", requireAuth(http.HandlerFunc(listingHandler.DeleteListing)))
 	mux.Handle("POST /listings", requireAuth(http.HandlerFunc(listingHandler.CreateListing)))
+
+	// Upload routes
+	uploadHandler := handlers.NewUploadHandler(logger, r2Client)
+	mux.Handle("POST /uploads/presign", requireAuth(http.HandlerFunc(uploadHandler.Presign)))
 
 	// request id middleware
 	rootHandler := middleware.RequestIDMiddleware(mux)
