@@ -22,10 +22,10 @@ type CreateListingRequest struct {
 
 type ListingUploadKeys struct {
 	ListingID       uuid.UUID                  `json:"listing_id"`
-	ImageObjectKeys []PrecessedObjectUploadKey `json:"images"`
+	ImageObjectKeys []ProcessedObjectUploadKey `json:"images"`
 }
 
-type PrecessedObjectUploadKey struct {
+type ProcessedObjectUploadKey struct {
 	OriginalKey    string
 	ImageID        string
 	Extension      string
@@ -48,7 +48,7 @@ func (req *CreateListingRequest) Validate(userId string) (ListingUploadKeys, err
 
 	listingUUID := uuid.New()
 
-	parsedUploadKeys := make([]PrecessedObjectUploadKey, 0, len(req.ImageKeys))
+	parsedUploadKeys := make([]ProcessedObjectUploadKey, 0, len(req.ImageKeys))
 	if req.ImageKeys != nil {
 		for _, key := range req.ImageKeys {
 			parts := strings.Split(key, "/")
@@ -63,11 +63,6 @@ func (req *CreateListingRequest) Validate(userId string) (ListingUploadKeys, err
 			// Check prefix
 			if prefix != "uploads" {
 				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "image key must start with 'uploads/'"}
-			}
-
-			// Check if key contains subdirectories (e.g. uploads/user/123/abc.jpg)
-			if strings.Contains(fileName, "/") {
-				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "no subdirectories allowed in image key"}
 			}
 
 			// Validate UUID format
@@ -86,7 +81,7 @@ func (req *CreateListingRequest) Validate(userId string) (ListingUploadKeys, err
 				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "image key does not belong to authenticated user"}
 			}
 
-			parsedUploadKeys = append(parsedUploadKeys, PrecessedObjectUploadKey{
+			parsedUploadKeys = append(parsedUploadKeys, ProcessedObjectUploadKey{
 				OriginalKey:    key,
 				ImageID:        imageRawUUID,
 				Extension:      ext,

@@ -106,9 +106,34 @@ func isNotFound(err error) bool {
 	var se smithy.APIError
 	if errors.As(err, &se) {
 		switch se.ErrorCode() {
-		case "NotFound", "NoSuchKey":
+		case "NotFound", "NoSuchKey", "404":
 			return true
 		}
 	}
 	return false
 }
+
+func (c *Client) CopyObject(ctx context.Context, srcKey, dstKey string) error {
+	copySource := fmt.Sprintf("%s/%s", c.Bucket, srcKey)
+	_, err := c.Client.CopyObject(ctx, &s3.CopyObjectInput{
+		Bucket:     aws.String(c.Bucket),
+		CopySource: aws.String(copySource),
+		Key:        aws.String(dstKey),
+	})
+	if err != nil {
+		return fmt.Errorf("storage: failed to copy object from %q to %q: %w", srcKey, dstKey, err)
+	}
+	return nil
+}
+
+func (c *Client) DeleteObject(ctx context.Context, key string) error {
+	_, err := c.Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+		Bucket: aws.String(c.Bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return fmt.Errorf("storage: failed to delete object %q: %w", key, err)
+	}
+	return nil
+}
+

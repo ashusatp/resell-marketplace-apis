@@ -59,7 +59,7 @@ func (uh *UploadHandler) Presign(w http.ResponseWriter, r *http.Request) {
 			field = vError.Field
 			msg = vError.Message
 		}
-		uh.Logger.Error("Signup validate error", "request_id", requestId, "err", err)
+		uh.Logger.Error("Presign validate error", "request_id", requestId, "err", err)
 		httpx.ValidationError(w, http.StatusUnprocessableEntity, msg, httpx.CodeValidationFailed, field)
 		return
 	}
