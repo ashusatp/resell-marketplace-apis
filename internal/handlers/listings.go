@@ -12,6 +12,7 @@ import (
 	"github.com/tecisage/resell-apis/internal/dtos"
 	"github.com/tecisage/resell-apis/internal/httpx"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
+	"github.com/tecisage/resell-apis/internal/services"
 )
 
 type Listing struct {
@@ -26,14 +27,17 @@ type Listing struct {
 }
 
 type ListingHandler struct {
-	DB     *sql.DB
-	Logger *slog.Logger
+	DB             *sql.DB
+	Logger         *slog.Logger
+	ListingService *services.ListingService
 }
 
 func NewListingHandler(db *sql.DB, logger *slog.Logger) *ListingHandler {
+	listingService := services.NewListingService(logger, db)
 	return &ListingHandler{
-		DB:     db,
-		Logger: logger,
+		DB:             db,
+		Logger:         logger,
+		ListingService: listingService,
 	}
 }
 
@@ -122,17 +126,8 @@ func (lh *ListingHandler) DeleteListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// 4. Use ExecContext with r.Context() to handle zombie query and connection
-	result, err := lh.DB.ExecContext(ctx, `DELETE FROM listings WHERE id = $1 AND created_by = $2`, id, claims.UserID)
+	rowsAffected, err := lh.ListingService.DeleteListing(ctx, reqId, id, claims.UserID)
 	if err != nil {
-		lh.Logger.Error("DeleteListing exec error", "listing_id", id, "request_id", reqId, "err", err)
-		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
-		return
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		lh.Logger.Error("DeleteListing rowsAffected error", "listing_id", id, "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 		return
 	}
@@ -165,7 +160,9 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := req.Validate(); err != nil {
+	var parsedUploadKeys []string
+	parsedUploadKeys, err := req.Validate(claims.UserID)
+	if err != nil {
 		var vError *dtos.ValidationError
 		errors.As(err, &vError)
 		lh.Logger.Error("CreateListing validate error", "request_id", reqId, "err", err)
@@ -173,22 +170,12 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	query := `
-		INSERT INTO listings (title, description, price, city, created_by)
-		VALUES ($1, $2, $3, $4, $5)
-		RETURNING id, title, created_at;
-	`
-
-	var out dtos.CreateListingResponse
-	err := lh.DB.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City, claims.UserID).
-		Scan(&out.ID, &out.Title, &out.Created)
+	out, err := lh.ListingService.CreateListing(ctx, reqId, req, claims.UserID, parsedUploadKeys)
 	if err != nil {
-		lh.Logger.Error("CreateListing query error", "request_id", reqId, "err", err)
+		lh.Logger.Error("CreateListing service error", "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 		return
 	}
-
-	lh.Logger.Info("Listing created successfully", "id", out.ID, "request_id", reqId)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
