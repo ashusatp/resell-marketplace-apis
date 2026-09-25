@@ -60,7 +60,7 @@ func (r *PresignReq) ValidateAndGetUploadKeys(userUUID string) ([]FileKeyAndSize
 			}
 		}
 
-		if !isAllowedContentType(fileType) {
+		if !IsAllowedContentType(fileType) {
 			return nil, &ValidationError{
 				Field:   fmt.Sprintf("files[%d].content_type", i),
 				Message: "invalid content type, allowed types: image/jpeg, image/png, image/webp",
@@ -91,10 +91,6 @@ func (r *PresignReq) ValidateAndGetUploadKeys(userUUID string) ([]FileKeyAndSize
 	return keys, nil
 }
 
-func isAllowedContentType(contentType string) bool {
-	return slices.Contains(allowedContentTypes, contentType)
-}
-
 type PresignedFile struct {
 	UploadURL string `json:"upload_url"`
 	Key       string `json:"key"`
@@ -108,6 +104,24 @@ type PresignedURLWithKey struct {
 
 type PresignResponse struct {
 	PresignedURLs []PresignedURLWithKey `json:"presigned_urls"`
+}
+
+func IsAllowedContentType(contentType string) bool {
+	return slices.Contains(allowedContentTypes, contentType)
+}
+
+func GetContentType(key string) string {
+	ext := filepath.Ext(key)
+	switch ext {
+	case ".jpg":
+		return "image/jpeg"
+	case ".png":
+		return "image/png"
+	case ".webp":
+		return "image/webp"
+	default:
+		return "image/jpeg"
+	}
 }
 
 // uploads/{user_id}/{uuid}.jpg
@@ -125,19 +139,5 @@ func getExtFromContentType(contentType string) string {
 		return "webp"
 	default:
 		return "jpg"
-	}
-}
-
-func GetContentType(key string) string {
-	ext := filepath.Ext(key)
-	switch ext {
-	case ".jpg":
-		return "image/jpeg"
-	case ".png":
-		return "image/png"
-	case ".webp":
-		return "image/webp"
-	default:
-		return "image/jpeg"
 	}
 }

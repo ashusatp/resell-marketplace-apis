@@ -2,12 +2,16 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go"
+	"github.com/tecisage/resell-apis/internal/dtos"
 )
 
 type Client struct {
@@ -23,6 +27,12 @@ type R2Config struct {
 	Bucket       string
 	Region       string
 }
+
+var ErrNotFound = errors.New("storage: object not found")
+var ErrZeroSizeObject = errors.New("storage: object has zero content length")
+var ErrNoContentType = errors.New("storage: object has no content type")
+var ErrFileSizeExceeded = errors.New("storage: object size exceeds limit")
+var ErrInvalidContentType = errors.New("storage: invalid content type")
 
 func NewR2Client(ctx context.Context, cfg R2Config) (*Client, error) {
 
@@ -50,4 +60,55 @@ func NewR2Client(ctx context.Context, cfg R2Config) (*Client, error) {
 		Presigner: presigner,
 		Bucket:    cfg.Bucket,
 	}, nil
+}
+
+func (c *Client) HeadObject(ctx context.Context, key string) (contentLength int64, contentType string, err error) {
+	out, err := c.Client.HeadObject(ctx, &s3.HeadObjectInput{
+		Bucket: aws.String(c.Bucket),
+		Key:    aws.String(key),
+	})
+
+	if err != nil {
+		if isNotFound(err) {
+			return 0, "", ErrNotFound
+		}
+		return 0, "", fmt.Errorf("storage: failed to head object: %q: %w", key, err)
+	}
+
+	if out.ContentLength != nil {
+		contentLength = *out.ContentLength
+	}
+
+	if out.ContentType != nil {
+		contentType = *out.ContentType
+	}
+
+	if contentLength == 0 {
+		return 0, "", ErrZeroSizeObject
+	}
+	if contentLength > dtos.MaxFileSize {
+		return 0, "", ErrFileSizeExceeded
+	}
+
+	if contentType == "" {
+		return 0, "", ErrNoContentType
+	}
+
+	mediaType := strings.ToLower(strings.TrimSpace(strings.Split(contentType, ";")[0]))
+	if !dtos.IsAllowedContentType(mediaType) {
+		return 0, "", ErrInvalidContentType
+	}
+
+	return contentLength, contentType, nil
+}
+
+func isNotFound(err error) bool {
+	var se smithy.APIError
+	if errors.As(err, &se) {
+		switch se.ErrorCode() {
+		case "NotFound", "NoSuchKey":
+			return true
+		}
+	}
+	return false
 }

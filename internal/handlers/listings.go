@@ -13,6 +13,7 @@ import (
 	"github.com/tecisage/resell-apis/internal/httpx"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
 	"github.com/tecisage/resell-apis/internal/services"
+	"github.com/tecisage/resell-apis/internal/storage"
 )
 
 type Listing struct {
@@ -30,14 +31,16 @@ type ListingHandler struct {
 	DB             *sql.DB
 	Logger         *slog.Logger
 	ListingService *services.ListingService
+	Storage        *storage.Client
 }
 
-func NewListingHandler(db *sql.DB, logger *slog.Logger) *ListingHandler {
+func NewListingHandler(db *sql.DB, logger *slog.Logger, storage *storage.Client) *ListingHandler {
 	listingService := services.NewListingService(logger, db)
 	return &ListingHandler{
 		DB:             db,
 		Logger:         logger,
 		ListingService: listingService,
+		Storage:        storage,
 	}
 }
 
@@ -160,8 +163,7 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var parsedUploadKeys []string
-	parsedUploadKeys, err := req.Validate(claims.UserID)
+	listingUploadKeys, err := req.Validate(claims.UserID)
 	if err != nil {
 		var vError *dtos.ValidationError
 		errors.As(err, &vError)
@@ -170,7 +172,41 @@ func (lh *ListingHandler) CreateListing(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	out, err := lh.ListingService.CreateListing(ctx, reqId, req, claims.UserID, parsedUploadKeys)
+	for _, uk := range listingUploadKeys.ImageObjectKeys {
+		_, _, err := lh.Storage.HeadObject(ctx, uk.OriginalKey)
+
+		if err != nil {
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				lh.Logger.Error("CreateListing: image not found", "request_id", reqId, "err", err)
+				httpx.ValidationError(w, http.StatusUnprocessableEntity, "image not found", httpx.CodeValidationFailed, "image_upload")
+				return
+			case errors.Is(err, storage.ErrZeroSizeObject):
+				lh.Logger.Error("CreateListing: image has zero content length", "request_id", reqId, "err", err)
+				httpx.ValidationError(w, http.StatusUnprocessableEntity, "image has zero content length", httpx.CodeValidationFailed, "image_upload")
+				return
+			case errors.Is(err, storage.ErrFileSizeExceeded):
+				lh.Logger.Error("CreateListing: image size exceeds limit", "request_id", reqId, "err", err)
+				httpx.ValidationError(w, http.StatusUnprocessableEntity, "image size exceeds limit", httpx.CodeValidationFailed, "image_upload")
+				return
+			case errors.Is(err, storage.ErrNoContentType):
+				lh.Logger.Error("CreateListing: image has no content type", "request_id", reqId, "err", err)
+				httpx.ValidationError(w, http.StatusUnprocessableEntity, "image has no content type", httpx.CodeValidationFailed, "image_upload")
+				return
+			case errors.Is(err, storage.ErrInvalidContentType):
+				lh.Logger.Error("CreateListing: image has invalid content type", "request_id", reqId, "err", err)
+				httpx.ValidationError(w, http.StatusUnprocessableEntity, "uploaded object has an unsupported content type", httpx.CodeValidationFailed, "image_upload")
+				return
+			default:
+				lh.Logger.Error("CreateListing: failed to head object", "request_id", reqId, "err", err)
+				httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
+				return
+			}
+		}
+
+	}
+
+	out, err := lh.ListingService.CreateListing(ctx, reqId, req, claims.UserID, listingUploadKeys)
 	if err != nil {
 		lh.Logger.Error("CreateListing service error", "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)

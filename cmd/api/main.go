@@ -62,7 +62,7 @@ func main() {
 	requireAuth := middleware.AuthMiddleware(cfg.JWTSecret)
 
 	// listing routes
-	listingHandler := handlers.NewListingHandler(db, logger)
+	listingHandler := handlers.NewListingHandler(db, logger, r2Client)
 	mux.HandleFunc("GET /listings", listingHandler.GetListings)
 	mux.Handle("DELETE /listings/{id}", requireAuth(http.HandlerFunc(listingHandler.DeleteListing)))
 	mux.Handle("POST /listings", requireAuth(http.HandlerFunc(listingHandler.CreateListing)))

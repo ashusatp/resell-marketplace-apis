@@ -20,15 +20,15 @@ func NewListingService(logger *slog.Logger, db *sql.DB) *ListingService {
 	}
 }
 
-func (ls *ListingService) CreateListing(ctx context.Context, reqId string, req dtos.CreateListingRequest, userId string, parsedUploadKeys []string) (dtos.CreateListingResponse, error) {
+func (ls *ListingService) CreateListing(ctx context.Context, reqId string, req dtos.CreateListingRequest, userId string, listingUploadKeys dtos.ListingUploadKeys) (dtos.CreateListingResponse, error) {
 	query := `
-		INSERT INTO listings (title, description, price, city, created_by)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO listings (id, title, description, price, city, created_by)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, title, created_at;
 	`
 
 	var out dtos.CreateListingResponse
-	err := ls.Db.QueryRowContext(ctx, query, req.Title, req.Description, req.Price, req.City, userId).
+	err := ls.Db.QueryRowContext(ctx, query, listingUploadKeys.ListingID, req.Title, req.Description, req.Price, req.City, userId).
 		Scan(&out.ID, &out.Title, &out.Created)
 	if err != nil {
 		ls.Logger.Error("Listing Service: CreateListing query error", "request_id", reqId, "err", err)

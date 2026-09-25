@@ -1,10 +1,15 @@
 package dtos
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
+)
+
+const (
+	ListingPrefix = "listings"
 )
 
 type CreateListingRequest struct {
@@ -15,26 +20,40 @@ type CreateListingRequest struct {
 	ImageKeys   []string `json:"image_keys"` //uploads/<user-id>/<image-uuid>.png
 }
 
-func (req *CreateListingRequest) Validate(userId string) ([]string, error) {
+type ListingUploadKeys struct {
+	ListingID       uuid.UUID                  `json:"listing_id"`
+	ImageObjectKeys []PrecessedObjectUploadKey `json:"images"`
+}
+
+type PrecessedObjectUploadKey struct {
+	OriginalKey    string
+	ImageID        string
+	Extension      string
+	FinalObjectKey string
+}
+
+func (req *CreateListingRequest) Validate(userId string) (ListingUploadKeys, error) {
 	if strings.TrimSpace(req.Title) == "" {
-		return nil, &ValidationError{Field: "title", Message: "title is required"}
+		return ListingUploadKeys{}, &ValidationError{Field: "title", Message: "title is required"}
 	}
 	if strings.TrimSpace(req.Description) == "" {
-		return nil, &ValidationError{Field: "description", Message: "description is required"}
+		return ListingUploadKeys{}, &ValidationError{Field: "description", Message: "description is required"}
 	}
 	if req.Price <= 0 {
-		return nil, &ValidationError{Field: "price", Message: "price must be greater than 0"}
+		return ListingUploadKeys{}, &ValidationError{Field: "price", Message: "price must be greater than 0"}
 	}
 	if strings.TrimSpace(req.City) == "" {
-		return nil, &ValidationError{Field: "city", Message: "city is required"}
+		return ListingUploadKeys{}, &ValidationError{Field: "city", Message: "city is required"}
 	}
 
-	parsedUploadKeys := make([]string, 0, len(req.ImageKeys))
+	listingUUID := uuid.New()
+
+	parsedUploadKeys := make([]PrecessedObjectUploadKey, 0, len(req.ImageKeys))
 	if req.ImageKeys != nil {
 		for _, key := range req.ImageKeys {
 			parts := strings.Split(key, "/")
 			if len(parts) != 3 {
-				return nil, &ValidationError{Field: "image_keys", Message: "invalid image key format"}
+				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "invalid image key format"}
 			}
 
 			prefix := parts[0]
@@ -43,38 +62,49 @@ func (req *CreateListingRequest) Validate(userId string) ([]string, error) {
 
 			// Check prefix
 			if prefix != "uploads" {
-				return nil, &ValidationError{Field: "image_keys", Message: "image key must start with 'uploads/'"}
+				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "image key must start with 'uploads/'"}
 			}
 
 			// Check if key contains subdirectories (e.g. uploads/user/123/abc.jpg)
 			if strings.Contains(fileName, "/") {
-				return nil, &ValidationError{Field: "image_keys", Message: "no subdirectories allowed in image key"}
+				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "no subdirectories allowed in image key"}
 			}
 
 			// Validate UUID format
 			if _, err := uuid.Parse(userIDInKey); err != nil {
-				return nil, &ValidationError{Field: "image_keys", Message: "invalid user ID in image key"}
+				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "invalid user ID in image key"}
 			}
 
 			ext := filepath.Ext(fileName)
-			rawUUID := strings.TrimSuffix(fileName, ext)
-			if _, err := uuid.Parse(rawUUID); err != nil {
-				return nil, &ValidationError{Field: "image_keys", Message: "invalid file name in image key"}
+			imageRawUUID := strings.TrimSuffix(fileName, ext)
+			if _, err := uuid.Parse(imageRawUUID); err != nil {
+				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "invalid file name in image key"}
 			}
 
 			// Verify key belongs to the authenticated user
 			if userIDInKey != userId {
-				return nil, &ValidationError{Field: "image_keys", Message: "image key does not belong to authenticated user"}
+				return ListingUploadKeys{}, &ValidationError{Field: "image_keys", Message: "image key does not belong to authenticated user"}
 			}
 
-			parsedUploadKeys = append(parsedUploadKeys, fileName)
+			parsedUploadKeys = append(parsedUploadKeys, PrecessedObjectUploadKey{
+				OriginalKey:    key,
+				ImageID:        imageRawUUID,
+				Extension:      ext,
+				FinalObjectKey: mintFinalObjectKey(listingUUID, uuid.MustParse(imageRawUUID), ext),
+			})
 		}
 	}
-	return parsedUploadKeys, nil
+	return ListingUploadKeys{ImageObjectKeys: parsedUploadKeys, ListingID: listingUUID}, nil
 }
 
 type CreateListingResponse struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
 	Created string `json:"created_at"`
+}
+
+// {listingsPrefix}
+// filepath.Ext() includes the leading dot (.jpg), formatting with "%s/%s/%s.%s" creates an extra dot:
+func mintFinalObjectKey(listingID uuid.UUID, imageID uuid.UUID, ext string) string {
+	return fmt.Sprintf("%s/%s/%s%s", ListingPrefix, listingID.String(), imageID.String(), ext)
 }
