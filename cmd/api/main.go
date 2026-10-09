@@ -77,8 +77,9 @@ func main() {
 	uploadHandler := handlers.NewUploadHandler(logger, r2Client)
 	mux.Handle("POST /uploads/presign", requireAuth(http.HandlerFunc(uploadHandler.Presign)))
 
-	// request id middleware
-	rootHandler := middleware.RequestIDMiddleware(mux)
+	// middlewares
+	corsMiddleware := middleware.CORSMiddleware(cfg.AllowedOrigins)
+	rootHandler := middleware.RequestIDMiddleware(corsMiddleware(mux))
 
 	// create http server
 	log.Println("Starting server on :" + cfg.Port)

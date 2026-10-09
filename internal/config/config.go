@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -15,6 +16,7 @@ type Config struct {
 	R2_ACCESS_KEY    string
 	R2_ACCESS_SECRET string
 	R2_BUCKET        string
+	AllowedOrigins   []string
 }
 
 func MustLoad() Config {
@@ -60,6 +62,19 @@ func MustLoad() Config {
 		panic("R2_BUCKET is not set")
 	}
 
+	rawAllowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	var allowedOrigins []string
+	if rawAllowedOrigins != "" {
+		for _, o := range strings.Split(rawAllowedOrigins, ",") {
+			trimmed := strings.TrimRight(strings.TrimSpace(o), "/")
+			if trimmed != "" {
+				allowedOrigins = append(allowedOrigins, trimmed)
+			}
+		}
+	} else {
+		allowedOrigins = []string{"http://localhost:5173"}
+	}
+
 	return Config{
 		Port:             port,
 		Env:              env,
@@ -69,5 +84,6 @@ func MustLoad() Config {
 		R2_ACCESS_KEY:    R2_ACCESS_KEY,
 		R2_ACCESS_SECRET: R2_ACCESS_SECRET,
 		R2_BUCKET:        R2_BUCKET,
+		AllowedOrigins:   allowedOrigins,
 	}
 }
