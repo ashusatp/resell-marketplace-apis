@@ -8,7 +8,10 @@ A high-performance backend API for a peer-to-peer secondhand marketplace built w
 
 The application implements an asynchronous **Transactional Outbox Pattern** with a background worker engine to handle image uploads, validation, normalization, and lifecycle management without blocking user requests.
 
-### Flowchart Diagram
+![Image Upload Architecture](docs/architecture.png)
+
+<details>
+<summary><b>Click to view interactive Mermaid flowchart</b></summary>
 
 ```mermaid
 flowchart TD
@@ -63,7 +66,7 @@ flowchart TD
     class TxRejectBegin,TxReadyBegin tx;
 ```
 
-*(If you export your whiteboard image as `docs/architecture.png`, you can also display it with: `![Image Architecture](docs/architecture.png)`)*
+</details>
 
 ---
 
