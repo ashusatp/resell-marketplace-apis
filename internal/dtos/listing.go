@@ -13,6 +13,14 @@ const (
 	ImageProcessedExt = ".jpeg"
 )
 
+type ListingStatusType string
+
+const (
+	ListingStatusReady      ListingStatusType = "ready"
+	ListingStatusProcessing ListingStatusType = "processing"
+	ListingStatusRejected   ListingStatusType = "rejected"
+)
+
 type CreateListingRequest struct {
 	Title       string   `json:"title" binding:"required"`
 	Description string   `json:"description" binding:"required"`

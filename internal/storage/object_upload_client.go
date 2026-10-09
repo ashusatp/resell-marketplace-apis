@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -102,6 +103,22 @@ func (c *Client) HeadObject(ctx context.Context, key string) (contentLength int6
 	return contentLength, contentType, nil
 }
 
+func (c *Client) GetObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	out, err := c.Client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(c.Bucket),
+		Key:    aws.String(key),
+	})
+
+	if err != nil {
+		if isNotFound(err) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("storage: failed to get object: %q: %w", key, err)
+	}
+
+	return out.Body, nil
+}
+
 func isNotFound(err error) bool {
 	var se smithy.APIError
 	if errors.As(err, &se) {
@@ -136,4 +153,3 @@ func (c *Client) DeleteObject(ctx context.Context, key string) error {
 	}
 	return nil
 }
-
