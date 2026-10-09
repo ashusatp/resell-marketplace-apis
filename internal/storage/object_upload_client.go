@@ -121,9 +121,10 @@ func (c *Client) GetObject(ctx context.Context, key string) (io.ReadCloser, erro
 
 func (c *Client) PutObject(ctx context.Context, key string, body io.Reader) error {
 	_, err := c.Client.PutObject(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(c.Bucket),
-		Key:    aws.String(key),
-		Body:   body,
+		Bucket:       aws.String(c.Bucket),
+		Key:          aws.String(key),
+		Body:         body,
+		CacheControl: aws.String("public, max-age=31536000, immutable"),
 	})
 	if err != nil {
 		return fmt.Errorf("storage: failed to put object: %q: %w", key, err)

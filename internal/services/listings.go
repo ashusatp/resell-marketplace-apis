@@ -7,12 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/tecisage/resell-apis/internal/dtos"
 	"github.com/tecisage/resell-apis/internal/jobs"
 	"github.com/tecisage/resell-apis/internal/storage"
 )
+
+var ErrListingNotFound = errors.New("listing not found")
 
 type ListingService struct {
 	Logger  *slog.Logger
@@ -133,6 +136,193 @@ func (ls *ListingService) DeleteListing(ctx context.Context, reqId string, listi
 	}
 
 	return rowsAffected, nil
+}
+
+func (ls *ListingService) GetListings(ctx context.Context, reqId string) ([]dtos.ListingResponse, error) {
+	query := `
+		SELECT 
+			l.id, l.title, l.description, l.price, l.city, l.image, l.status, l.created_at, l.updated_at, l.created_by,
+			i.id as image_id, i.object_key, i.position
+		FROM listings l
+		LEFT JOIN images i ON i.listing_id = l.id
+		WHERE l.id IN (SELECT id FROM listings ORDER BY created_at DESC LIMIT 100)
+		ORDER BY l.created_at DESC, i.position ASC;
+	`
+
+	rows, err := ls.Db.QueryContext(ctx, query)
+	if err != nil {
+		ls.Logger.Error("Listing Service: GetListings query error", "request_id", reqId, "err", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	listings := make([]dtos.ListingResponse, 0)
+	listingIndex := make(map[string]int)
+
+	for rows.Next() {
+		var (
+			id          string
+			title       string
+			description string
+			price       int64
+			city        string
+			image       *string
+			status      string
+			createdAt   time.Time
+			updatedAt   time.Time
+			createdBy   *string
+			imageID     sql.NullString
+			objectKey   sql.NullString
+			position    sql.NullInt16
+		)
+
+		if err := rows.Scan(
+			&id,
+			&title,
+			&description,
+			&price,
+			&city,
+			&image,
+			&status,
+			&createdAt,
+			&updatedAt,
+			&createdBy,
+			&imageID,
+			&objectKey,
+			&position,
+		); err != nil {
+			ls.Logger.Error("Listing Service: GetListings scan error", "request_id", reqId, "err", err)
+			return nil, err
+		}
+
+		idx, exists := listingIndex[id]
+		if !exists {
+			item := dtos.ListingResponse{
+				ID:          id,
+				Title:       title,
+				Description: description,
+				Price:       price,
+				City:        city,
+				Image:       image,
+				Status:      status,
+				CreatedBy:   createdBy,
+				CreatedAt:   createdAt,
+				UpdatedAt:   updatedAt,
+				Images:      make([]dtos.ListingImage, 0),
+			}
+			listings = append(listings, item)
+			idx = len(listings) - 1
+			listingIndex[id] = idx
+		}
+
+		if imageID.Valid && objectKey.Valid {
+			listings[idx].Images = append(listings[idx].Images, dtos.ListingImage{
+				ID:        imageID.String,
+				ObjectKey: objectKey.String,
+				Position:  position.Int16,
+			})
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		ls.Logger.Error("Listing Service: GetListings rows error", "request_id", reqId, "err", err)
+		return nil, err
+	}
+
+	return listings, nil
+}
+
+func (ls *ListingService) GetListingByID(ctx context.Context, reqId string, listingId string) (*dtos.ListingResponse, error) {
+	query := `
+		SELECT 
+			l.id, l.title, l.description, l.price, l.city, l.image, l.status, l.created_at, l.updated_at, l.created_by,
+			i.id as image_id, i.object_key, i.position
+		FROM listings l
+		LEFT JOIN images i ON i.listing_id = l.id
+		WHERE l.id = $1
+		ORDER BY i.position ASC;
+	`
+
+	rows, err := ls.Db.QueryContext(ctx, query, listingId)
+	if err != nil {
+		ls.Logger.Error("Listing Service: GetListingByID query error", "request_id", reqId, "listing_id", listingId, "err", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	var listing *dtos.ListingResponse
+
+	for rows.Next() {
+		var (
+			id          string
+			title       string
+			description string
+			price       int64
+			city        string
+			image       *string
+			status      string
+			createdAt   time.Time
+			updatedAt   time.Time
+			createdBy   *string
+			imageID     sql.NullString
+			objectKey   sql.NullString
+			position    sql.NullInt16
+		)
+
+		if err := rows.Scan(
+			&id,
+			&title,
+			&description,
+			&price,
+			&city,
+			&image,
+			&status,
+			&createdAt,
+			&updatedAt,
+			&createdBy,
+			&imageID,
+			&objectKey,
+			&position,
+		); err != nil {
+			ls.Logger.Error("Listing Service: GetListingByID scan error", "request_id", reqId, "listing_id", listingId, "err", err)
+			return nil, err
+		}
+
+		if listing == nil {
+			listing = &dtos.ListingResponse{
+				ID:          id,
+				Title:       title,
+				Description: description,
+				Price:       price,
+				City:        city,
+				Image:       image,
+				Status:      status,
+				CreatedBy:   createdBy,
+				CreatedAt:   createdAt,
+				UpdatedAt:   updatedAt,
+				Images:      make([]dtos.ListingImage, 0),
+			}
+		}
+
+		if imageID.Valid && objectKey.Valid {
+			listing.Images = append(listing.Images, dtos.ListingImage{
+				ID:        imageID.String,
+				ObjectKey: objectKey.String,
+				Position:  position.Int16,
+			})
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		ls.Logger.Error("Listing Service: GetListingByID rows error", "request_id", reqId, "listing_id", listingId, "err", err)
+		return nil, err
+	}
+
+	if listing == nil {
+		return nil, ErrListingNotFound
+	}
+
+	return listing, nil
 }
 
 func (ls *ListingService) prepareJobPayload(listingUploadKeys dtos.ListingUploadKeys) jobs.ProcessImagepayload {

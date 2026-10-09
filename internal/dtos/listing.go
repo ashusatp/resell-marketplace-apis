@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -106,6 +107,26 @@ type CreateListingResponse struct {
 	Title   string `json:"title"`
 	Status  string `json:"status"`
 	Created string `json:"created_at"`
+}
+
+type ListingImage struct {
+	ID        string `json:"id"`
+	ObjectKey string `json:"object_key"`
+	Position  int16  `json:"position"`
+}
+
+type ListingResponse struct {
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Description string         `json:"description"`
+	Price       int64          `json:"price"`
+	City        string         `json:"city"`
+	Image       *string        `json:"image"`
+	Status      string         `json:"status"`
+	CreatedBy   *string        `json:"created_by,omitempty"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
+	Images      []ListingImage `json:"images"`
 }
 
 // {listingsPrefix}

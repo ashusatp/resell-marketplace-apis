@@ -69,6 +69,7 @@ func main() {
 	// listing routes
 	listingHandler := handlers.NewListingHandler(db, logger, r2Client)
 	mux.HandleFunc("GET /listings", listingHandler.GetListings)
+	mux.HandleFunc("GET /listings/{id}", listingHandler.GetListingByID)
 	mux.Handle("DELETE /listings/{id}", requireAuth(http.HandlerFunc(listingHandler.DeleteListing)))
 	mux.Handle("POST /listings", requireAuth(http.HandlerFunc(listingHandler.CreateListing)))
 

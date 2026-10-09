@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/tecisage/resell-apis/internal/dtos"
@@ -15,17 +14,6 @@ import (
 	"github.com/tecisage/resell-apis/internal/services"
 	"github.com/tecisage/resell-apis/internal/storage"
 )
-
-type Listing struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	Price       int64     `json:"price"`
-	City        string    `json:"city"`
-	Image       *string   `json:"image"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-}
 
 type ListingHandler struct {
 	DB             *sql.DB
@@ -43,59 +31,53 @@ func NewListingHandler(db *sql.DB, logger *slog.Logger, storage *storage.Client)
 }
 
 func (lh *ListingHandler) GetListings(w http.ResponseWriter, r *http.Request) {
-
-	// request scoped context
 	ctx := r.Context()
-	// get request id from context
 	reqId := middleware.GetRequestID(ctx)
 
-	query := `
-		SELECT id, title, description, price, city, image, created_at, updated_at
-		FROM listings
-		ORDER BY created_at DESC
-		LIMIT 100;
-	`
-
-	// 1. Use QueryContext with r.Context() to handle zombie query and connection
-	rows, err := lh.DB.QueryContext(ctx, query)
+	listings, err := lh.ListingService.GetListings(ctx, reqId)
 	if err != nil {
-		lh.Logger.Error("GetListings query error", "request_id", reqId, "err", err)
-		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
-		return
-	}
-	defer rows.Close()
-
-	// 2. Initialize slice to avoid JSON "null" on empty results
-	lis := make([]Listing, 0)
-	for rows.Next() {
-		var l Listing
-		if err := rows.Scan(
-			&l.ID,
-			&l.Title,
-			&l.Description,
-			&l.Price,
-			&l.City,
-			&l.Image,
-			&l.CreatedAt,
-			&l.UpdatedAt,
-		); err != nil {
-			lh.Logger.Error("GetListings scan error", "request_id", reqId, "err", err)
-			httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
-			return
-		}
-		lis = append(lis, l)
-	}
-
-	if err := rows.Err(); err != nil {
-		lh.Logger.Error("GetListings rows error", "request_id", reqId, "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(lis); err != nil {
+	if err := json.NewEncoder(w).Encode(listings); err != nil {
 		lh.Logger.Error("GetListings encode error", "request_id", reqId, "err", err)
+	}
+}
+
+func (lh *ListingHandler) GetListingByID(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	reqId := middleware.GetRequestID(ctx)
+
+	id := r.PathValue("id")
+	if id == "" {
+		lh.Logger.Error("GetListingByID: missing id", "request_id", reqId)
+		httpx.Error(w, http.StatusBadRequest, "missing id", httpx.CodeBadRequest)
+		return
+	}
+
+	if _, err := uuid.Parse(id); err != nil {
+		lh.Logger.Error("GetListingByID: invalid uuid", "id", id, "request_id", reqId, "err", err)
+		httpx.Error(w, http.StatusBadRequest, "invalid id format", httpx.CodeInvalidID)
+		return
+	}
+
+	listing, err := lh.ListingService.GetListingByID(ctx, reqId, id)
+	if err != nil {
+		if errors.Is(err, services.ErrListingNotFound) {
+			httpx.Error(w, http.StatusNotFound, "listing not found", httpx.CodeNotFound)
+			return
+		}
+		httpx.Error(w, http.StatusInternalServerError, "internal server error", httpx.CodeInternalError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(listing); err != nil {
+		lh.Logger.Error("GetListingByID encode error", "request_id", reqId, "err", err)
 	}
 }
 
