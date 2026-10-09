@@ -6,18 +6,22 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/tecisage/resell-apis/internal/dtos"
+	"github.com/tecisage/resell-apis/internal/imaging"
 	"github.com/tecisage/resell-apis/internal/jobs"
 	"github.com/tecisage/resell-apis/internal/storage"
 )
 
-const maxAttempts = 4
-const JobPollInterval = 3 * time.Second
+const (
+	MaxEdge         = 2048
+	ImageQuality    = 85
+	maxAttempts     = 4
+	JobPollInterval = 3 * time.Second
+)
 
 var ErrPermanent = errors.New("permanent failure")
 
@@ -113,25 +117,26 @@ func (w *Worker) processImages(ctx context.Context, jobID int64, payload *jobs.P
 
 	log := w.logger.With("job_id", jobID, "listing_id", payload.ListingID)
 
-	//Step 1: Fetch listing images
-	normalized := make([][]byte, 0, len(payload.ImageSources)) // tradeof - memory consumption
+	// Fetch and normalize images in a single loop to minimize memory usage
+	normalizedImages := make([][]byte, 0, len(payload.ImageSources))
 	for _, src := range payload.ImageSources {
 		rc, err := w.storage.GetObject(ctx, src.OriginalKey)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				log.Warn("object not found in storage ,skipping", "originalKey", src.OriginalKey)
+				log.Warn("object not found in storage, skipping", "originalKey", src.OriginalKey)
 				return w.finishImageProcessing(ctx, jobID, payload.ListingID, dtos.ListingStatusRejected)
 			}
 			return fmt.Errorf("failed to get object %q: %w", src.OriginalKey, err)
 		}
 
-		imgBytes, err := io.ReadAll(rc)
-		defer rc.Close()
+		// Stream directly from storage reader into Normalize, avoiding buffering raw image bytes in memory
+		out, err := imaging.Normalize(rc, MaxEdge, ImageQuality)
+		_ = rc.Close()
 		if err != nil {
-			return fmt.Errorf("failed to read object %q: %w", src.OriginalKey, err)
+			return permanentf("normalizing image %q: %v", src.OriginalKey, err)
 		}
 
-		normalized = append(normalized, imgBytes)
+		normalizedImages = append(normalizedImages, out)
 	}
 
 	return nil
