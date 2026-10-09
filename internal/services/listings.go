@@ -109,17 +109,7 @@ func (ls *ListingService) CreateListing(ctx context.Context, reqId string, req d
 		return dtos.CreateListingResponse{}, err
 	}
 
-	// 3. Copy files to permanent listings/ location in storage
-	for _, uk := range listingUploadKeys.ImageObjectKeys {
-		if err := ls.Storage.CopyObject(ctx, uk.OriginalKey, uk.FinalObjectKey); err != nil {
-			ls.Logger.Error("Listing Service: failed to copy object", "from", uk.OriginalKey, "to", uk.FinalObjectKey, "request_id", reqId, "err", err)
-			return dtos.CreateListingResponse{}, err
-		}
-		// Best-effort cleanup of temporary upload
-		_ = ls.Storage.DeleteObject(ctx, uk.OriginalKey)
-	}
-
-	// 4. Commit DB Transaction
+	// 3. Commit DB Transaction
 	if err := tx.Commit(); err != nil {
 		ls.Logger.Error("Listing Service: failed to commit transaction", "request_id", reqId, "err", err)
 		return dtos.CreateListingResponse{}, err

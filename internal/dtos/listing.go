@@ -10,7 +10,7 @@ import (
 
 const (
 	ListingPrefix     = "listings"
-	ImageProcessedExt = ".jpeg"
+	ImageProcessedExt = ".jpg"
 )
 
 type ListingStatusType string

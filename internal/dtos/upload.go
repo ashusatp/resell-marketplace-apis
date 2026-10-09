@@ -113,7 +113,7 @@ func IsAllowedContentType(contentType string) bool {
 func GetContentType(key string) string {
 	ext := filepath.Ext(key)
 	switch ext {
-	case ".jpg":
+	case ".jpg", ".jpeg":
 		return "image/jpeg"
 	case ".png":
 		return "image/png"
