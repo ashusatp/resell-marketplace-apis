@@ -49,7 +49,7 @@ func main() {
 
 	// worker
 	worker := worker.NewWorker(db, r2Client, logger)
-	go worker.Run()
+	go worker.Run(context.TODO())
 
 	// create mux
 	mux := http.NewServeMux()
