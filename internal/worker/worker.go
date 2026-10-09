@@ -3,7 +3,6 @@ package worker
 import (
 	"database/sql"
 	"log/slog"
-	"time"
 
 	"github.com/tecisage/resell-apis/internal/storage"
 )
@@ -24,17 +23,12 @@ func NewWorker(db *sql.DB, storage *storage.Client, logger *slog.Logger) *Worker
 
 func (w *Worker) Run() {
 	w.logger.Info("Worker Started")
-
 	for {
-		// fetch jobs from db
-		w.logger.Info("Fetching jobs from db")
-
-		// process jobs
-		w.logger.Info("Processing jobs")
-
-		// update db
-		w.logger.Info("Updating db")
-
-		time.Sleep(5 * time.Second)
+		w.claimAndProcess()
 	}
+}
+
+func (w *Worker) claimAndProcess() {
+	w.logger.Info("Claiming and processing jobs....")
+
 }

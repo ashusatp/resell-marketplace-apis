@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PostgreSQL Queue Processing Evolution (Outbox Pattern: v0 to v8)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(23, 31, 51, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.25);
+      --danger: #f87171;
+      --warning: #fbbf24;
+      --success: #34d399;
+      --code-bg: #070b14;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 2.5rem 1.5rem;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(56, 189, 248, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(99, 102, 241, 0.08) 0%, transparent 40%);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.35rem 1rem;
+      border-radius: 9999px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent);
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+
+    h1 {
+      font-size: 2.75rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.75rem;
+      background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 50%, #38bdf8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 1.15rem;
+      max-width: 750px;
+      margin: 0 auto;
+    }
+
+    /* Stepper Tabs */
+    .timeline {
+      display: flex;
+      gap: 0.5rem;
+      overflow-x: auto;
+      padding: 0.5rem;
+      margin-bottom: 2rem;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      backdrop-filter: blur(12px);
+    }
+
+    .step-btn {
+      flex: 1;
+      min-width: 110px;
+      padding: 0.85rem 0.6rem;
+      border: 1px solid transparent;
+      border-radius: 0.75rem;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .step-btn:hover {
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text-main);
+    }
+
+    .step-btn.active {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: rgba(56, 189, 248, 0.4);
+      color: var(--accent);
+      box-shadow: 0 4px 20px -2px var(--accent-glow);
+    }
+
+    .step-btn .v-tag {
+      font-family: 'Fira Code', monospace;
+      font-size: 0.95rem;
+      font-weight: 700;
+    }
+
+    .step-btn .v-label {
+      font-size: 0.72rem;
+      white-space: nowrap;
+      opacity: 0.85;
+    }
+
+    /* Main Content Card */
+    .view-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 1.25rem;
+      padding: 2.25rem;
+      backdrop-filter: blur(16px);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .view-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), #818cf8);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 1.75rem;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .card-title-group h2 {
+      font-size: 1.85rem;
+      font-weight: 700;
+      margin-bottom: 0.35rem;
+    }
+
+    .card-title-group .card-summary {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.45rem 1rem;
+      border-radius: 2rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
+    .status-broken {
+      background: rgba(248, 113, 113, 0.15);
+      color: var(--danger);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+    }
+
+    .status-partial {
+      background: rgba(251, 191, 36, 0.15);
+      color: var(--warning);
+      border: 1px solid rgba(251, 191, 36, 0.3);
+    }
+
+    .status-production {
+      background: rgba(52, 211, 153, 0.15);
+      color: var(--success);
+      border: 1px solid rgba(52, 211, 153, 0.3);
+    }
+
+    /* Grid layout */
+    .detail-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 2rem;
+    }
+
+    @media (max-width: 900px) {
+      .detail-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* Code block */
+    .code-container {
+      background: var(--code-bg);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 0.85rem;
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.65rem 1rem;
+      background: rgba(255, 255, 255, 0.03);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-family: 'Fira Code', monospace;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    pre {
+      padding: 1.25rem;
+      overflow-x: auto;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.88rem;
+      line-height: 1.7;
+      color: #e2e8f0;
+    }
+
+    .sql-keyword { color: #38bdf8; font-weight: 600; }
+    .sql-func { color: #c084fc; }
+    .sql-string { color: #86efac; }
+    .sql-comment { color: #64748b; font-style: italic; }
+
+    /* Failure & Explanation Box */
+    .info-panels {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .panel {
+      padding: 1.25rem;
+      border-radius: 0.85rem;
+      border: 1px solid var(--card-border);
+      background: rgba(15, 23, 42, 0.45);
+    }
+
+    .panel-title {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .panel-flaw {
+      border-color: rgba(248, 113, 113, 0.25);
+      background: rgba(248, 113, 113, 0.05);
+    }
+    .panel-flaw .panel-title { color: var(--danger); }
+
+    .panel-insight {
+      border-color: rgba(56, 189, 248, 0.25);
+      background: rgba(56, 189, 248, 0.05);
+    }
+    .panel-insight .panel-title { color: var(--accent); }
+
+    .panel-content {
+      font-size: 0.92rem;
+      color: #cbd5e1;
+      line-height: 1.6;
+    }
+
+    .panel-content ul {
+      padding-left: 1.25rem;
+      margin-top: 0.5rem;
+    }
+
+    .panel-content li {
+      margin-bottom: 0.35rem;
+    }
+
+    /* Interactive Comparison Matrix */
+    .matrix-section {
+      margin-top: 3.5rem;
+    }
+
+    .matrix-section h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      text-align: center;
+    }
+
+    .table-container {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      overflow-x: auto;
+      backdrop-filter: blur(12px);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.88rem;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.03);
+      padding: 1rem 1.2rem;
+      color: var(--text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--card-border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 0.9rem 1.2rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #cbd5e1;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    tr.highlight-row td {
+      background: rgba(56, 189, 248, 0.07);
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .tag-pill {
+      display: inline-block;
+      padding: 0.2rem 0.5rem;
+      border-radius: 0.35rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: 'Fira Code', monospace;
+    }
+    .tag-no { background: rgba(248, 113, 113, 0.2); color: var(--danger); }
+    .tag-yes { background: rgba(52, 211, 153, 0.2); color: var(--success); }
+    .tag-warn { background: rgba(251, 191, 36, 0.2); color: var(--warning); }
+
+    /* Footer */
+    footer {
+      text-align: center;
+      margin-top: 4rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--card-border);
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <div class="badge">Architecture & Database Patterns</div>
+      <h1>PostgreSQL Queue Processing</h1>
+      <p class="subtitle">The evolutionary journey of claiming jobs in PostgreSQL: from naive racing queries to bulletproof production queues.</p>
+    </header>
+
+    <!-- Navigation Stepper -->
+    <div class="timeline" id="stepper">
+      <!-- Buttons will be rendered by JS -->
+    </div>
+
+    <!-- Active Version Detail Card -->
+    <div class="view-card" id="card">
+      <div class="card-header">
+        <div class="card-title-group">
+          <h2 id="versionTitle">Loading...</h2>
+          <div class="card-summary" id="versionSummary">...</div>
+        </div>
+        <div id="statusBadge"></div>
+      </div>
+
+      <div class="detail-grid">
+        <!-- SQL Code Block -->
+        <div class="code-container">
+          <div class="code-header">
+            <span>SQL IMPLEMENTATION</span>
+            <span id="stepCounter">STEP 1 OF 9</span>
+          </div>
+          <pre><code id="sqlCode"></code></pre>
+        </div>
+
+        <!-- Flaw & Concept Analysis -->
+        <div class="info-panels">
+          <div class="panel panel-flaw" id="flawPanel">
+            <div class="panel-title">
+              <span>⚠️ What Breaks Under Load</span>
+            </div>
+            <div class="panel-content" id="flawText"></div>
+          </div>
+
+          <div class="panel panel-insight" id="insightPanel">
+            <div class="panel-title">
+              <span>💡 Architectural Insight</span>
+            </div>
+            <div class="panel-content" id="insightText"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Comparison Matrix -->
+    <div class="matrix-section">
+      <h2>Full Evolution Comparison Matrix</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Key SQL Primitive</th>
+              <th>Multi-Worker Safe</th>
+              <th>Zero Lock Contention</th>
+              <th>Crash Safe (Lease)</th>
+              <th>Throttled Backoff</th>
+              <th>Poison Pill Safe</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>v0</strong> Naive</td>
+              <td><code>SELECT ... LIMIT 1</code></td>
+              <td><span class="tag-pill tag-no">No (Race)</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>v1</strong> Optimistic</td>
+              <td><code>UPDATE ... AND done=false</code></td>
+              <td><span class="tag-pill tag-warn">Wastes Work</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>v2</strong> Subquery</td>
+              <td><code>UPDATE ... WHERE id = (SELECT)</code></td>
+              <td><span class="tag-pill tag-no">READ COMMITTED Trap</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>v3</strong> Row Lock</td>
+              <td><code>FOR UPDATE</code></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-no">Blocked</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>v4</strong> Non-blocking</td>
+              <td><code>FOR UPDATE SKIP LOCKED</code></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Linear Scale</span></td>
+              <td><span class="tag-pill tag-no">Job Lost</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>v5</strong> Lease Pattern</td>
+              <td><code>run_after = NOW() + 30s</code></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Linear Scale</span></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-no">Retry Storm</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>v6</strong> Backoff</td>
+              <td><code>POWER(2, attempts)</code></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Linear Scale</span></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-warn">Unbounded</span></td>
+              <td><span class="tag-pill tag-no">No</span></td>
+            </tr>
+            <tr>
+              <td><strong>v7</strong> Capped</td>
+              <td><code>LEAST(..., INTERVAL '1 hour')</code></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Linear Scale</span></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-no">Infinite Loop</span></td>
+            </tr>
+            <tr class="highlight-row">
+              <td><strong>v8</strong> Production</td>
+              <td><code>attempts &lt; $1 + LEAST + SKIP LOCKED</code></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Linear Scale</span></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Yes</span></td>
+              <td><span class="tag-pill tag-yes">Dead Letter Queue</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <footer>
+      Resell APIs Architecture Notes &bull; PostgreSQL Transactional Outbox Pattern
+    </footer>
+  </div>
+
+  <script>
+    const versions = [
+      {
+        id: "v0",
+        tag: "v0",
+        label: "Naive Two-Step",
+        title: "v0: Naive SELECT + UPDATE",
+        summary: "Select undone row, process in Go, then mark done.",
+        badge: "status-broken",
+        badgeText: "Double-Dispatch Race",
+        sql: `-- Step 1: Claim job
+SELECT id, kind, payload 
+FROM jobs 
+WHERE done = false 
+ORDER BY id 
+LIMIT 1;
+
+-- In Go worker: process job...
+
+-- Step 2: Mark done
+UPDATE jobs SET done = true WHERE id = $1;`,
+        flaw: `<strong>The Double-Dispatch Race:</strong><br>
+When you run 2 or more workers, both run the <code>SELECT</code> query within milliseconds of each other. Both see <code>id = 1</code> as undone.
+<ul>
+  <li>Worker 1 resizes the image or charges the user's card.</li>
+  <li>Worker 2 executes the <em>exact same job</em> concurrently.</li>
+  <li>Catastrophic duplicate processing.</li>
+</ul>`,
+        insight: `Never split <strong>claim</strong> and <strong>lock</strong> into two disconnected transactions without isolation controls.`
+      },
+      {
+        id: "v1",
+        tag: "v1",
+        label: "Optimistic Claim",
+        title: "v1: Claim with Conditional Update",
+        summary: "Check 'done = false' when marking complete.",
+        badge: "status-broken",
+        badgeText: "Wasted Computation",
+        sql: `-- Step 1: Select job
+SELECT id, kind, payload 
+FROM jobs 
+WHERE done = false 
+ORDER BY id 
+LIMIT 1;
+
+-- In Go worker: process job...
+
+-- Step 2: Conditional update
+UPDATE jobs 
+SET done = true 
+WHERE id = $1 AND done = false;
+
+-- If RowsAffected() == 0: someone beat you!`,
+        flaw: `<strong>Massive Resource Wastage:</strong><br>
+Worker 1 and Worker 2 both do the heavy work (e.g. 5 seconds downloading and encoding images).
+<ul>
+  <li>Worker 1 finishes first: <code>RowsAffected = 1</code>.</li>
+  <li>Worker 2 finishes: <code>RowsAffected = 0</code>. All Worker 2's CPU, RAM, and network time were thrown away.</li>
+  <li>External non-idempotent side effects (emails, webhooks) were still duplicated!</li>
+</ul>`,
+        insight: `Optimistic concurrency control works for low-contention updates, but fails miserably for worker queues where contention is 100%.`
+      },
+      {
+        id: "v2",
+        tag: "v2",
+        label: "Subquery Pick",
+        title: "v2: Single Atomic Statement (Subquery)",
+        summary: "Combine SELECT and UPDATE in one statement.",
+        badge: "status-broken",
+        badgeText: "READ COMMITTED Trap",
+        sql: `UPDATE jobs 
+SET done = true 
+WHERE id = (
+    SELECT id 
+    FROM jobs 
+    WHERE done = false 
+    ORDER BY id 
+    LIMIT 1
+) 
+RETURNING id, kind, payload;`,
+        flaw: `<strong>READ COMMITTED Snapshot Pitfall:</strong><br>
+In Postgres default isolation level (<code>READ COMMITTED</code>):
+<ul>
+  <li>Worker A & B subqueries run concurrently and both select <code>id = 1</code>.</li>
+  <li>Worker A locks the row and updates it to <code>done = true</code>.</li>
+  <li>Worker B blocks on the row lock. When Worker A commits, Worker B awakens and re-evaluates the condition.</li>
+  <li>Because <code>done</code> is now <code>true</code>, Worker B updates <strong>0 rows</strong> and wastes a query roundtrip while other jobs wait!</li>
+</ul>`,
+        insight: `A subquery runs on its snapshot, but the outer update locks and re-evaluates against the newly committed tuple.`
+      },
+      {
+        id: "v3",
+        tag: "v3",
+        label: "FOR UPDATE",
+        title: "v3: Lock Row in Subquery (FOR UPDATE)",
+        summary: "Acquire an exclusive row lock inside the subquery.",
+        badge: "status-broken",
+        badgeText: "Head-of-Line Blocking",
+        sql: `UPDATE jobs 
+SET done = true 
+WHERE id = (
+    SELECT id 
+    FROM jobs 
+    WHERE done = false 
+    ORDER BY id 
+    FOR UPDATE 
+    LIMIT 1
+) 
+RETURNING id, kind, payload;`,
+        flaw: `<strong>Worker Serialization Bottleneck:</strong><br>
+<code>FOR UPDATE</code> locks the row immediately.
+<ul>
+  <li>Worker 2 tries to read the subquery, encounters Worker 1's lock, and <strong>sleeps/blocks</strong>.</li>
+  <li>Instead of grabbing <code>Job 2</code>, Worker 2 waits for Worker 1.</li>
+  <li>Adding more workers does not increase throughput—it serializes them!</li>
+</ul>`,
+        insight: `Row locks prevent concurrency bugs, but without a skip mechanism, they introduce head-of-line blocking.`
+      },
+      {
+        id: "v4",
+        tag: "v4",
+        label: "SKIP LOCKED",
+        title: "v4: Non-Blocking Claim (SKIP LOCKED)",
+        summary: "Skip locked rows so workers pick separate jobs.",
+        badge: "status-partial",
+        badgeText: "Linear Scaling / Crash Unsafe",
+        sql: `UPDATE jobs 
+SET done = true 
+WHERE id = (
+    SELECT id 
+    FROM jobs 
+    WHERE done = false 
+    ORDER BY id 
+    FOR UPDATE SKIP LOCKED 
+    LIMIT 1
+) 
+RETURNING id, kind, payload;`,
+        flaw: `<strong>Worker Crash = Job Vanishes Forever:</strong><br>
+Concurrency is now perfectly solved! Throughput scales linearly with workers. <strong>However:</strong>
+<ul>
+  <li>The job was marked <code>done = true</code> <em>before</em> Go processed it.</li>
+  <li>If the Go worker process crashes (OOM, panic, server restart, network blip) while processing, the job is lost forever.</li>
+</ul>`,
+        insight: `<code>SKIP LOCKED</code> unlocks true Postgres queue throughput. But eager completion destroys fault tolerance.`
+      },
+      {
+        id: "v5",
+        tag: "v5",
+        label: "Lease Pattern",
+        title: "v5: Crash-Resilient Lease (run_after)",
+        summary: "Lease the job for 30s instead of marking done.",
+        badge: "status-partial",
+        badgeText: "Crash-Safe / Retry Storm",
+        sql: `UPDATE jobs 
+SET run_after = NOW() + INTERVAL '30 seconds'
+WHERE id = (
+    SELECT id 
+    FROM jobs 
+    WHERE run_after <= NOW() 
+    ORDER BY id 
+    FOR UPDATE SKIP LOCKED 
+    LIMIT 1
+) 
+RETURNING id, kind, payload;
+
+-- Upon successful Go completion:
+-- DELETE FROM jobs WHERE id = $1; (or mark status = 'completed')`,
+        flaw: `<strong>Downstream Outage & Retry Storms:</strong><br>
+If an external dependency (Cloudflare R2, database, S3) goes down:
+<ul>
+  <li>Workers fail all jobs immediately.</li>
+  <li>Exactly 30 seconds later, <em>all</em> failed jobs expire simultaneously.</li>
+  <li>Workers hammer the recovering dependency in a thundering herd retry storm!</li>
+</ul>`,
+        insight: `Leasing provides heartbeat/invisibility timeouts. But fixed delay retries turn brief outages into cascading failures.`
+      },
+      {
+        id: "v6",
+        tag: "v6",
+        label: "Exponential Backoff",
+        title: "v6: Self-Healing Exponential Backoff",
+        summary: "Scale delay exponentially: 30s * 2^attempts.",
+        badge: "status-partial",
+        badgeText: "Unbounded Delay",
+        sql: `UPDATE jobs 
+SET attempts = attempts + 1,
+    run_after = NOW() + INTERVAL '30 seconds' * POWER(2, attempts)
+WHERE id = (
+    SELECT id 
+    FROM jobs 
+    WHERE run_after <= NOW() 
+    ORDER BY id 
+    FOR UPDATE SKIP LOCKED 
+    LIMIT 1
+) 
+RETURNING id, kind, payload;`,
+        flaw: `<strong>Unbounded Exponential Explosion:</strong><br>
+Exponential backoff gives services time to recover (30s &rarr; 60s &rarr; 120s &rarr; 240s).<br>
+<strong>The catch:</strong>
+<ul>
+  <li>Attempt 10: ~8.5 hours.</li>
+  <li>Attempt 16: ~22 days.</li>
+  <li>Attempt 30: Over 1,000 years (or integer overflow in SQL date math).</li>
+</ul>`,
+        insight: `Exponential backoff dampens retry storms, but mathematically demands an upper ceiling.`
+      },
+      {
+        id: "v7",
+        tag: "v7",
+        label: "Capped Backoff",
+        title: "v7: Capped Exponential Backoff with LEAST()",
+        summary: "Clamp the backoff to a safe ceiling (1 hour).",
+        badge: "status-partial",
+        badgeText: "Poison Pill Loop",
+        sql: `UPDATE jobs 
+SET attempts = attempts + 1,
+    run_after = NOW() + LEAST(
+        INTERVAL '30 seconds' * POWER(2, attempts),
+        INTERVAL '1 hour'
+    )
+WHERE id = (
+    SELECT id 
+    FROM jobs 
+    WHERE run_after <= NOW() 
+    ORDER BY id 
+    FOR UPDATE SKIP LOCKED 
+    LIMIT 1
+) 
+RETURNING id, kind, payload;`,
+        flaw: `<strong>Poison Pill Infinite Loops:</strong><br>
+What if a job has a corrupt payload (e.g. malformed image bytes that always cause a decode panic)?
+<ul>
+  <li>The job will retry every 1 hour <em>forever</em>.</li>
+  <li>The table fills with zombie jobs that waste worker bandwidth indefinitely.</li>
+</ul>`,
+        insight: `Cap delays with SQL <code>LEAST()</code>, but never allow unbounded retries.`
+      },
+      {
+        id: "v8",
+        tag: "v8",
+        label: "Production v8",
+        title: "v8: Production-Ready Bounded Queue",
+        summary: "Bounded attempts, capped backoff, lease, & SKIP LOCKED.",
+        badge: "status-production",
+        badgeText: "Production Standard",
+        sql: `UPDATE jobs 
+SET attempts = attempts + 1,
+    run_after = NOW() + LEAST(
+        INTERVAL '30 seconds' * POWER(2, attempts),
+        INTERVAL '1 hour'
+    )
+WHERE id = (
+    SELECT id 
+    FROM jobs 
+    WHERE run_after <= NOW() 
+      AND attempts < $1      -- e.g. $1 = 5 (Dead Letter Queue threshold)
+    ORDER BY id 
+    FOR UPDATE SKIP LOCKED 
+    LIMIT 1
+) 
+RETURNING id, kind, payload;`,
+        flaw: `<strong>Zero Critical Flaws:</strong><br>
+<ul>
+  <li><strong>Multi-Worker Safe:</strong> <code>SKIP LOCKED</code> eliminates blocking & races.</li>
+  <li><strong>Crash Safe:</strong> Lease pattern re-queues jobs if worker dies mid-flight.</li>
+  <li><strong>Storm Protected:</strong> Exponential backoff with 1-hour cap.</li>
+  <li><strong>Poison Pill Quarantine:</strong> Jobs with <code>attempts >= $1</code> naturally stop processing and wait in Dead-Letter status for triage.</li>
+</ul>`,
+        insight: `This query powers high-throughput transactional outbox workers in PostgreSQL without external message brokers!`
+      }
+    ];
+
+    let currentIdx = 8; // default to v8
+
+    const stepper = document.getElementById('stepper');
+    const versionTitle = document.getElementById('versionTitle');
+    const versionSummary = document.getElementById('versionSummary');
+    const statusBadge = document.getElementById('statusBadge');
+    const stepCounter = document.getElementById('stepCounter');
+    const sqlCode = document.getElementById('sqlCode');
+    const flawText = document.getElementById('flawText');
+    const insightText = document.getElementById('insightText');
+
+    function renderStepper() {
+      stepper.innerHTML = '';
+      versions.forEach((v, idx) => {
+        const btn = document.createElement('button');
+        btn.className = `step-btn ${idx === currentIdx ? 'active' : ''}`;
+        btn.innerHTML = `
+          <span class="v-tag">${v.tag}</span>
+          <span class="v-label">${v.label}</span>
+        `;
+        btn.onclick = () => {
+          currentIdx = idx;
+          updateView();
+          renderStepper();
+        };
+        stepper.appendChild(btn);
+      });
+    }
+
+    function formatSQL(sql) {
+      return sql
+        .replace(/\b(SELECT|UPDATE|SET|WHERE|AND|OR|ORDER BY|LIMIT|RETURNING|FOR UPDATE|SKIP LOCKED|INTERVAL|NOW|POWER|LEAST|FROM)\b/g, '<span class="sql-keyword">$1</span>')
+        .replace(/(--.*)/g, '<span class="sql-comment">$1</span>');
+    }
+
+    function updateView() {
+      const v = versions[currentIdx];
+      versionTitle.textContent = v.title;
+      versionSummary.textContent = v.summary;
+      stepCounter.textContent = `STEP ${currentIdx + 1} OF ${versions.length}`;
+      
+      statusBadge.innerHTML = `<span class="status-pill ${v.badge}">● ${v.badgeText}</span>`;
+      sqlCode.innerHTML = formatSQL(v.sql);
+      flawText.innerHTML = v.flaw;
+      insightText.innerHTML = v.insight;
+    }
+
+    renderStepper();
+    updateView();
+  </script>
+</body>
+</html>
