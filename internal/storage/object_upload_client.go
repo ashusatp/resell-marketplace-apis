@@ -119,6 +119,18 @@ func (c *Client) GetObject(ctx context.Context, key string) (io.ReadCloser, erro
 	return out.Body, nil
 }
 
+func (c *Client) PutObject(ctx context.Context, key string, body io.Reader) error {
+	_, err := c.Client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: aws.String(c.Bucket),
+		Key:    aws.String(key),
+		Body:   body,
+	})
+	if err != nil {
+		return fmt.Errorf("storage: failed to put object: %q: %w", key, err)
+	}
+	return nil
+}
+
 func isNotFound(err error) bool {
 	var se smithy.APIError
 	if errors.As(err, &se) {
