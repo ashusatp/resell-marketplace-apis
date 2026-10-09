@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/google/uuid"
 	"github.com/tecisage/resell-apis/internal/dtos"
 	"github.com/tecisage/resell-apis/internal/jobs"
 	"github.com/tecisage/resell-apis/internal/storage"
@@ -84,7 +85,9 @@ func (ls *ListingService) CreateListing(ctx context.Context, reqId string, req d
 			INSERT INTO images (listing_id, object_key, position)
 			VALUES ($1, $2, $3);
 		`
-		if _, err := tx.ExecContext(ctx, query, listingUploadKeys.ListingID, s.OriginalKey, int16(i)); err != nil {
+
+		imageUUID := uuid.MustParse(s.ImageID)
+		if _, err := tx.ExecContext(ctx, query, listingUploadKeys.ListingID, dtos.MintImageKey(imageUUID), int16(i)); err != nil {
 			ls.Logger.Error("Listing Service: CreateListing insert image error", "request_id", reqId, "err", err)
 			return dtos.CreateListingResponse{}, err
 		}

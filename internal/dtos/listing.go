@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	ListingPrefix = "listings"
+	ListingPrefix     = "listings"
+	ImageProcessedExt = ".jpeg"
 )
 
 type CreateListingRequest struct {
@@ -85,7 +86,7 @@ func (req *CreateListingRequest) Validate(userId string) (ListingUploadKeys, err
 				OriginalKey:    key,
 				ImageID:        imageRawUUID,
 				Extension:      ext,
-				FinalObjectKey: mintFinalObjectKey(listingUUID, uuid.MustParse(imageRawUUID), ext),
+				FinalObjectKey: mintFinalObjectKey(listingUUID, uuid.MustParse(imageRawUUID)),
 			})
 		}
 	}
@@ -101,6 +102,11 @@ type CreateListingResponse struct {
 
 // {listingsPrefix}
 // filepath.Ext() includes the leading dot (.jpg), formatting with "%s/%s/%s.%s" creates an extra dot:
-func mintFinalObjectKey(listingID uuid.UUID, imageID uuid.UUID, ext string) string {
-	return fmt.Sprintf("%s/%s/%s%s", ListingPrefix, listingID.String(), imageID.String(), ext)
+func mintFinalObjectKey(listingID uuid.UUID, imageID uuid.UUID) string {
+	return fmt.Sprintf("%s/%s/%s", ListingPrefix, listingID.String(), MintImageKey(imageID))
+}
+
+func MintImageKey(imageID uuid.UUID) string {
+	// todo: currently we convert all images to .jpeg, we should use the original extension
+	return fmt.Sprintf("%s%s", imageID.String(), ImageProcessedExt)
 }
