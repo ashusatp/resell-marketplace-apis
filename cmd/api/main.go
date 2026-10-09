@@ -13,6 +13,7 @@ import (
 	"github.com/tecisage/resell-apis/internal/handlers"
 	middleware "github.com/tecisage/resell-apis/internal/middlewares"
 	"github.com/tecisage/resell-apis/internal/storage"
+	"github.com/tecisage/resell-apis/internal/worker"
 )
 
 func main() {
@@ -45,6 +46,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("main.storage.NewR2Client: %v", err)
 	}
+
+	// worker
+	worker := worker.NewWorker(db, r2Client, logger)
+	go worker.Run()
 
 	// create mux
 	mux := http.NewServeMux()
