@@ -27,10 +27,10 @@ func (us *UploadService) GetPresignedURLs(files []dtos.FileKeyAndSize, expiry ti
 	presignedURLs := make([]dtos.PresignedURLWithKey, len(files))
 	for i, file := range files {
 		presignResult, err := us.R2Client.Presigner.PresignPutObject(context.TODO(), &s3.PutObjectInput{
-			Bucket:        aws.String(us.R2Client.Bucket),
-			Key:           aws.String(file.Key),
-			ContentType:   aws.String(dtos.GetContentType(file.Key)),
-			ContentLength: aws.Int64(file.SizeBytes),
+			Bucket:      aws.String(us.R2Client.Bucket),
+			Key:         aws.String(file.Key),
+			ContentType: aws.String(dtos.GetContentType(file.Key)),
+			// ContentLength: aws.Int64(file.SizeBytes),
 		}, s3.WithPresignExpires(expiry))
 		if err != nil {
 			return dtos.PresignResponse{}, err

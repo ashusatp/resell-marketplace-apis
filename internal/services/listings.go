@@ -3,11 +3,13 @@ package services
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 
 	"github.com/tecisage/resell-apis/internal/dtos"
+	"github.com/tecisage/resell-apis/internal/jobs"
 	"github.com/tecisage/resell-apis/internal/storage"
 )
 
@@ -64,14 +66,43 @@ func (ls *ListingService) CreateListing(ctx context.Context, reqId string, req d
 	query := `
 		INSERT INTO listings (id, title, description, price, city, image, created_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
-		RETURNING id, title, created_at;
+		RETURNING id, title, status, created_at;
 	`
 
+	// Insert listing into database
 	var out dtos.CreateListingResponse
 	err = tx.QueryRowContext(ctx, query, listingUploadKeys.ListingID, req.Title, req.Description, req.Price, req.City, primaryImage, userId).
-		Scan(&out.ID, &out.Title, &out.Created)
+		Scan(&out.ID, &out.Title, &out.Status, &out.Created)
 	if err != nil {
 		ls.Logger.Error("Listing Service: CreateListing insert error", "request_id", reqId, "err", err)
+		return dtos.CreateListingResponse{}, err
+	}
+
+	// Insert images into database
+	for i, s := range listingUploadKeys.ImageObjectKeys {
+		query := `
+			INSERT INTO images (listing_id, object_key, position)
+			VALUES ($1, $2, $3);
+		`
+		if _, err := tx.ExecContext(ctx, query, listingUploadKeys.ListingID, s.OriginalKey, int16(i)); err != nil {
+			ls.Logger.Error("Listing Service: CreateListing insert image error", "request_id", reqId, "err", err)
+			return dtos.CreateListingResponse{}, err
+		}
+	}
+
+	// Create job in jobs table for image processing
+	payload, err := json.Marshal(ls.prepareJobPayload(listingUploadKeys))
+	if err != nil {
+		ls.Logger.Error("Listing Service: failed to marshal payload", "request_id", reqId, "err", err)
+		return dtos.CreateListingResponse{}, err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO jobs (kind, payload)
+		VALUES ($1, $2);
+	`, jobs.KindProcessingListingImages, payload)
+	if err != nil {
+		ls.Logger.Error("Listing Service: CreateListing insert job error", "request_id", reqId, "err", err)
 		return dtos.CreateListingResponse{}, err
 	}
 
@@ -109,4 +140,20 @@ func (ls *ListingService) DeleteListing(ctx context.Context, reqId string, listi
 	}
 
 	return rowsAffected, nil
+}
+
+func (ls *ListingService) prepareJobPayload(listingUploadKeys dtos.ListingUploadKeys) jobs.ProcessImagepayload {
+	imageSources := make([]jobs.ImageSource, 0, len(listingUploadKeys.ImageObjectKeys))
+
+	for _, uk := range listingUploadKeys.ImageObjectKeys {
+		imageSources = append(imageSources, jobs.ImageSource{
+			OriginalKey: uk.OriginalKey,
+			FinalKey:    uk.FinalObjectKey,
+		})
+	}
+
+	return jobs.ProcessImagepayload{
+		ListingID:    listingUploadKeys.ListingID,
+		ImageSources: imageSources,
+	}
 }

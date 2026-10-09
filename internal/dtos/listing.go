@@ -26,10 +26,10 @@ type ListingUploadKeys struct {
 }
 
 type ProcessedObjectUploadKey struct {
-	OriginalKey    string
-	ImageID        string
-	Extension      string
-	FinalObjectKey string
+	OriginalKey    string // uploads/<user-id>/<image-id>.<ext> - client sent
+	ImageID        string // image-id
+	Extension      string // .ext
+	FinalObjectKey string // listings/<listing-id>/<image-id>.<ext> - final key post image processing
 }
 
 func (req *CreateListingRequest) Validate(userId string) (ListingUploadKeys, error) {
@@ -95,6 +95,7 @@ func (req *CreateListingRequest) Validate(userId string) (ListingUploadKeys, err
 type CreateListingResponse struct {
 	ID      string `json:"id"`
 	Title   string `json:"title"`
+	Status  string `json:"status"`
 	Created string `json:"created_at"`
 }
 
