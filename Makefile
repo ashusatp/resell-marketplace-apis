@@ -1,4 +1,4 @@
-.PHONY: build run clean
+.PHONY: build run clean vet
 
 build:
 	@go build -o bin/api ./cmd/api
@@ -8,6 +8,9 @@ run: build
 
 clean:
 	@rm -rf bin
+
+vet:
+	@go vet ./...
 
 migrate-up:
 	@go run ./cmd/migrate up
